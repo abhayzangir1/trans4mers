@@ -71,22 +71,31 @@ Ensure you have `gcloud` CLI installed and authenticated to your Google Cloud pr
 
 ## Architecture
 
-```
-Human User
-    |
-    v
-[Next.js App Router] -- SSE --> [Frontend UI]
-    |
-    v
-[Agent Factory] --> [GenKit ReAct Loop]
-    |                       |
-    v                       v
-[Prisma/Neon DB]     [Tool Executor]
-                          |
-          +---------------+---------------+
-          |       |       |       |       |
-        File    Shell   Browser  Swarm  Messaging
-        System  (PTY)   (MCP)    Spawn  (Channels)
+```mermaid
+graph TD
+    User([Human User]) -->|Interacts| UI[Next.js Frontend]
+    UI -->|SSE Stream| Backend[Next.js API Routes]
+    
+    Backend --> AgentFactory[Agent Factory]
+    AgentFactory --> GenKit[GenKit Reasoning Loop]
+    GenKit -->|LLM Calls| Gemini[Gemini 2.5 Pro/Flash]
+    
+    GenKit --> ToolExecutor{Tool Executor}
+    ToolExecutor -->|File I/O| FS[File System Sandbox]
+    ToolExecutor -->|CLI| PTY[PTY Terminal Sandbox]
+    ToolExecutor -->|Web| MCP[Puppeteer MCP / Browserbase]
+    ToolExecutor -->|Comms| Channels[Messaging Channels]
+    
+    AgentFactory --> DB[(Neon Serverless PostgreSQL)]
+    Backend --> DB
+    
+    subgraph Google Cloud Run
+        UI
+        Backend
+        AgentFactory
+        GenKit
+        ToolExecutor
+    end
 ```
 
 ---
