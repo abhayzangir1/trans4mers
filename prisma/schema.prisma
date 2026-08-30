@@ -1,0 +1,196 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  binaryTargets   = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
+}
+
+model Project {
+  id                 String         @id @default(uuid())
+  sessionId          String?
+  name               String
+  directoryPath      String
+  globalInstructions String?
+  description        String?
+  conversations      Conversation[]
+  teams              ProjectTeam[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([sessionId])
+}
+
+model Conversation {
+  id             String          @id @default(uuid())
+  projectId      String
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title          String?
+  status         String          @default("ACTIVE")
+  channels       Channel[]
+  agentInstances AgentInstance[]
+  blackboard     SharedBlackboard[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model AgentTemplate {
+  id             String          @id @default(uuid())
+  name           String
+  role           String
+  systemPrompt   String
+  allowedTools   Json?
+  projectTeams   ProjectTeam[]
+  instances      AgentInstance[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model ProjectTeam {
+  projectId       String
+  agentTemplateId String
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  agentTemplate   AgentTemplate @relation(fields: [agentTemplateId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, agentTemplateId])
+}
+
+
+
+model AgentLog {
+  id              String        @id @default(uuid())
+  agentInstanceId String
+  agentInstance   AgentInstance @relation(fields: [agentInstanceId], references: [id], onDelete: Cascade)
+  content         String
+  createdAt       DateTime      @default(now())
+
+  @@index([agentInstanceId])
+}
+
+model Channel {
+  id             String       @id @default(uuid())
+  conversationId String
+  name           String
+  isDM           Boolean      @default(false)
+  isReadOnly     Boolean      @default(false)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messages       Message[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([conversationId])
+  @@unique([conversationId, name])
+}
+
+model Message {
+  id               String   @id @default(uuid())
+  channelId        String
+  channel          Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  senderId         String   // 'human', 'system', or AgentInstance ID
+  role             String   // 'user', 'agent', 'system', 'tool'
+  content          String
+  requiresApproval Boolean  @default(false)
+  approvalState    String?  // 'PENDING', 'APPROVED', 'REJECTED'
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([channelId])
+  @@index([channelId, role])
+}
+
+
+
+model MemoryBank {
+  id        String                 @id @default(uuid())
+  content   String
+  embedding Unsupported("vector(768)")?
+  createdAt DateTime               @default(now())
+}
+
+model FileLocks {
+  id        String   @id @default(uuid())
+  filePath  String   @unique
+  agentId   String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Artifacts {
+  id             String       @id @default(uuid())
+  conversationId String
+  filePath       String
+  status         String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Upload {
+  id             String   @id @default(uuid())
+  conversationId String
+  projectId      String
+  fileName       String
+  filePath       String
+  fileSize       Int
+  mimeType       String
+  createdAt      DateTime @default(now())
+}
+
+model SystemLock {
+  id        String   @id
+  lockedAt  DateTime
+  expiresAt DateTime
+}
+
+model CommandExecution {
+  id             String   @id @default(uuid())
+  conversationId String?
+  command        String
+  output         String
+  exitCode       Int?
+  createdAt      DateTime @default(now())
+}
+
+model Settings {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AgentInstance {
+  id               String       @id @default(uuid())
+  conversationId   String
+  templateId       String
+  parentInstanceId String?
+  status           String       @default("IDLE") // 'IDLE', 'RUNNING', 'HALTED', 'FIRED'
+  haltRequested    Boolean      @default(false)
+  currentTaskId    String?
+  contextState     Json?
+  
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  template         AgentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  logs             AgentLog[]
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([conversationId])
+}
+
+
+model SharedBlackboard {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  key            String
+  value          String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([conversationId])
+  @@unique([conversationId, key])
+}

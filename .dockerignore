@@ -1,0 +1,15 @@
+Dockerfile
+.dockerignore
+node_modules
+npm-debug.log
+README.md
+.next
+.git
+.env
+.env.*
+.agents
+.claude
+.cursor
+.devin
+gcp-key.json
+docker-compose.yml

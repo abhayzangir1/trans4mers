@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: trans4mers_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: changeme_local_only
+      POSTGRES_DB: trans4mers
+    ports:
+      - "5432:5432"
+    volumes:
+      - trans4mers_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  trans4mers_pgdata:

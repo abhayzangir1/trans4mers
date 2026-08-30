@@ -1,0 +1,159 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { Folder, MessageSquare, PlusCircle, Settings, ChevronDown, ChevronRight } from 'lucide-react';
+import { useOSStore } from '@/store/useOSStore';
+import NewProjectModal from './modals/NewProjectModal';
+import NewConversationModal from './modals/NewConversationModal';
+
+interface Conversation {
+  id: string;
+  title: string | null;
+  status: string;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  directoryPath: string;
+  conversations: Conversation[];
+}
+
+export default function LeftSidebar() {
+  const router = useRouter();
+  const params = useParams();
+  const { setSettingsModalOpen } = useOSStore();
+  
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+
+  const [isProjectModalOpen, setProjectModalOpen] = useState(false);
+  const [isConvModalOpen, setConvModalOpen] = useState(false);
+  const [activeProjectIdForConv, setActiveProjectIdForConv] = useState<string | null>(null);
+
+  const fetchProjects = () => {
+    fetch('/api/workspace/projects')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!Array.isArray(data)) {
+          console.error('Expected array of projects, got:', data);
+          setProjects([]);
+          setLoading(false);
+          return;
+        }
+        setProjects(data);
+        const initialExpanded: Record<string, boolean> = {};
+        data.forEach((p: Project) => {
+          initialExpanded[p.id] = true;
+        });
+        setExpandedProjects(initialExpanded);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch projects', err);
+        setProjects([]);
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  const toggleProject = (projectId: string) => {
+    setExpandedProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }));
+  };
+
+  const handleOpenConvModal = (projectId: string) => {
+    setActiveProjectIdForConv(projectId);
+    setConvModalOpen(true);
+  };
+
+  return (
+    <div className="flex flex-col h-full border-r border-zinc-800 text-sm" style={{ backgroundColor: 'var(--left-pane, #09090b)' }}>
+      <div className="p-4 border-b border-zinc-800">
+        <h2 className="font-semibold text-zinc-300 tracking-wide uppercase text-xs mb-3">trans4mers</h2>
+        <button 
+          onClick={() => setProjectModalOpen(true)}
+          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-3 rounded-md transition-colors"
+        >
+          <PlusCircle size={16} />
+          New Project
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {loading ? (
+          <div className="text-zinc-500 text-center py-4">Loading workspace...</div>
+        ) : projects.length === 0 ? (
+          <div className="text-zinc-500 text-center py-4 text-xs">No projects found. Create one to begin.</div>
+        ) : (
+          projects.map(project => (
+            <div key={project.id} className="mb-2">
+              <div 
+                className="flex items-center justify-between p-2 hover:bg-zinc-900 rounded cursor-pointer group text-zinc-300"
+                onClick={() => toggleProject(project.id)}
+              >
+                <div className="flex items-center gap-2">
+                  {expandedProjects[project.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <Folder size={14} className="text-blue-400" />
+                  <span className="font-medium truncate max-w-[150px]" title={project.name}>{project.name}</span>
+                </div>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleOpenConvModal(project.id); }}
+                  className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
+                  title="New Conversation"
+                >
+                  <PlusCircle size={14} />
+                </button>
+              </div>
+
+              {expandedProjects[project.id] && (
+                <div className="ml-6 space-y-0.5 mt-0.5 border-l border-zinc-800 pl-2">
+                  {project.conversations.map(conv => (
+                    <div 
+                      key={conv.id}
+                      onClick={() => router.push(`/workspace/${project.id}/${conv.id}`)}
+                      className={`flex items-center gap-2 p-1.5 rounded cursor-pointer ${params.conversationId === conv.id ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'}`}
+                    >
+                      <MessageSquare size={12} />
+                      <span className="truncate">{conv.title || 'Untitled'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="p-4 border-t border-zinc-800">
+        <button 
+          onClick={() => setSettingsModalOpen(true)}
+          className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors w-full p-2 hover:bg-zinc-900 rounded"
+        >
+          <Settings size={16} />
+          App Settings
+        </button>
+      </div>
+
+      <NewProjectModal 
+        isOpen={isProjectModalOpen} 
+        onClose={() => setProjectModalOpen(false)} 
+        onSuccess={fetchProjects} 
+      />
+      {activeProjectIdForConv && (
+        <NewConversationModal 
+          isOpen={isConvModalOpen} 
+          onClose={() => {
+            setConvModalOpen(false);
+            fetchProjects();
+          }} 
+          projectId={activeProjectIdForConv} 
+        />
+      )}
+    </div>
+  );
+}
