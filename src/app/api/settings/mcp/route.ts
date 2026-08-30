@@ -32,8 +32,8 @@ async function getConfig(): Promise<McpConfig> {
         userId: uuid,
         apiKeys: {},
         availableModels: [
-          { id: 'vertexai/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-          { id: 'vertexai/gemini-2.5-flash', name: 'Gemini 2.5 Flash' }
+          { id: 'vertexai/gemini-3.5-pro', name: 'Gemini 3.5 Pro' },
+          { id: 'vertexai/gemini-3.5-flash', name: 'Gemini 3.5 Flash' }
         ],
         overseer: { enabled: true, strategy: 'cron', threshold: 5 },
         theme: { mode: 'dark' }

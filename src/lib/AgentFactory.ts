@@ -329,7 +329,7 @@ ${instance.template.systemPrompt}
 
           const summaryPrompt = `Summarize the following interaction strictly preserving facts, decisions, and outcomes:\n${JSON.stringify(historyToSummarize)}`;
           if (combinedSignal.aborted) throw new Error('AbortError');
-          const summaryRes = await ai.generate({ model: 'vertexai/gemini-2.5-flash', prompt: summaryPrompt });
+          const summaryRes = await ai.generate({ model: 'vertexai/gemini-3.5-flash', prompt: summaryPrompt });
 
           history = [
             history[0], // Preserve System Preamble
@@ -346,7 +346,7 @@ ${instance.template.systemPrompt}
         const generateWithRetry = async (retries = 3, delay = 2000): ReturnType<typeof ai.generate> => {
           try {
             return await ai.generate({
-              model: 'vertexai/gemini-2.5-pro',
+              model: 'vertexai/gemini-3.5-pro',
               messages: history,
               tools,
               returnToolRequests: true,

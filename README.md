@@ -14,12 +14,12 @@ Designed for enterprise security and scale, Trans4mers is deployed on **Google C
 - A real-time **Swarm Map** (React Flow) visualizing agent networks and execution state
 - A hardened **PTY Terminal Sandbox** blocking environment variable leaks
 - Cross-agent direct messaging and task delegation via Slack-style channels
-- **Gemini 2.5 Pro/Flash** reasoning engine wrapped in a professional IDE-like interface
+- **Gemini 3.5 Pro/Flash** reasoning engine wrapped in a professional IDE-like interface
 - An **Overseer Watchdog** that monitors swarm health and intervenes if agents drift
 
 ## Tech Stack
 
-- **AI/LLM:** Google Gemini 2.5 Pro & Flash via GenKit
+- **AI/LLM:** Google Gemini 3.5 Pro & Flash via GenKit
 - **Frontend:** Next.js 16.3 (Turbopack), React 19, Tailwind CSS, Lucide Icons, React Resizable Panels
 - **Backend:** Next.js App Router (API Routes), Server-Sent Events (SSE)
 - **Database:** Neon Serverless PostgreSQL (Prisma ORM with pgvector)
@@ -78,7 +78,7 @@ graph TD
     
     Backend --> AgentFactory[Agent Factory]
     AgentFactory --> GenKit[GenKit Reasoning Loop]
-    GenKit -->|LLM Calls| Gemini[Gemini 2.5 Pro/Flash]
+    GenKit -->|LLM Calls| Gemini[Gemini 3.5 Pro/Flash]
     
     GenKit --> ToolExecutor{Tool Executor}
     ToolExecutor -->|File I/O| FS[File System Sandbox]
