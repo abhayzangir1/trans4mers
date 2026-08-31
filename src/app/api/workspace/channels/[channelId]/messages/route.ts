@@ -27,7 +27,7 @@ export async function POST(request: Request, props: { params: Promise<{ channelI
     if (!auth.authorized) return auth.response;
 
     const body = await request.json();
-    const { content, role = 'user', senderId = 'human' } = body;
+    const { content, role = 'USER', senderId = 'human' } = body;
 
     if (!content) {
       return NextResponse.json({ error: 'Message content is required' }, { status: 400 });

@@ -337,7 +337,7 @@ ${instance.template.systemPrompt}
         const latestMsgs = await prisma.message.findMany({
           where: { 
             channelId: { in: channelIds },
-            role: { in: ['user', 'agent'] },
+            role: { in: ['USER', 'AGENT'] },
             createdAt: { gt: lastMessageFetchTime }
           },
           orderBy: { createdAt: 'asc' }
