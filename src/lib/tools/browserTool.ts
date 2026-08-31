@@ -49,29 +49,30 @@ export const browserTool = ai.defineTool(
         throw new Error('You must provide either a url or a query');
       }
 
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      try {
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
-      let resultData: Record<string, unknown> = {};
-      
-      if (input.action === 'extract_text') {
-        const textContent = await page.evaluate(() => document.body.innerText);
-        resultData = { html: textContent };
-      } else if (input.action === 'screenshot') {
-        const screenshotBuffer = await page.screenshot({ fullPage: true });
-        resultData = { screenshotBase64: screenshotBuffer.toString('base64') };
+        let resultData: Record<string, unknown> = {};
+        
+        if (input.action === 'extract_text') {
+          const textContent = await page.evaluate(() => document.body.innerText);
+          resultData = { html: textContent };
+        } else if (input.action === 'screenshot') {
+          const screenshotBuffer = await page.screenshot({ fullPage: true });
+          resultData = { screenshotBase64: screenshotBuffer.toString('base64') };
+        }
+
+        return {
+          status: 'success',
+          message: `Successfully executed ${input.action} on ${input.url || input.query || 'page'}.`,
+          data: resultData,
+        };
+      } finally {
+        await browser.close().catch(console.error);
+        await browserbase.sessions.update(session.id, {
+          status: 'REQUEST_RELEASE',
+        }).catch(console.error);
       }
-
-      await browser.close();
-
-      await browserbase.sessions.update(session.id, {
-        status: 'REQUEST_RELEASE',
-      });
-
-      return {
-        status: 'success',
-        message: `Successfully executed ${input.action} on ${input.url}`,
-        data: resultData,
-      };
     } catch (error: unknown) {
       return {
         status: 'error',

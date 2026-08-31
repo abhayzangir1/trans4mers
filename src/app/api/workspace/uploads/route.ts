@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { FileSystem } from '@/lib/FileSystem';
 import path from 'path';
+import { validateConversationAccess } from '@/lib/withSession';
 
 export async function POST(req: Request) {
   try {
@@ -12,6 +13,11 @@ export async function POST(req: Request) {
 
     if (!file || !conversationId || !projectId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    const auth = await validateConversationAccess(conversationId);
+    if (!auth.authorized) {
+      return auth.response;
     }
 
     const safeConversationId = conversationId.replace(/[^a-zA-Z0-9-]/g, '');
@@ -59,6 +65,11 @@ export async function GET(req: Request) {
 
     if (!conversationId) {
       return NextResponse.json({ error: 'Missing conversationId' }, { status: 400 });
+    }
+
+    const auth = await validateConversationAccess(conversationId);
+    if (!auth.authorized) {
+      return auth.response;
     }
 
     const uploads = await prisma.upload.findMany({

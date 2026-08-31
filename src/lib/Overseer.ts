@@ -35,7 +35,16 @@ export class Overseer {
 
       for (const conv of activeConvs) {
         if (conv.agentInstances.length > config.maxConcurrentAgents) {
-          const blackboard = conv.channels[0];
+          let blackboard = conv.channels[0];
+          if (!blackboard) {
+            blackboard = await prisma.channel.create({
+              data: {
+                conversationId: conv.id,
+                name: 'shared-blackboard',
+                isReadOnly: false
+              }
+            });
+          }
           if (blackboard) {
             const recentOverseerMessage = await prisma.message.findFirst({
               where: {

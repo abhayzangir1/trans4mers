@@ -80,7 +80,7 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
   }, [isRightSidebarOpen, rightPanelRef]);
 
   return (
-    <div className="flex h-screen w-screen bg-zinc-950 overflow-hidden text-white">
+    <div className="flex h-screen w-screen bg-zinc-950 overflow-hidden" style={{ color: 'var(--text-color, #ffffff)' }}>
       <Group orientation="horizontal" className="h-full w-full">
         
         {/* Left Navigation Sidebar */}
@@ -125,13 +125,13 @@ export default function WorkspaceShell({ children }: { children: React.ReactNode
                   onClick={() => setCenterPaneTab('slack')}
                   className={"flex items-center gap-2 px-3 py-1 text-xs font-medium rounded-sm transition-colors " + (centerPaneTab === 'slack' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200')}
                 >
-                  <MessageSquare size={14} /> Slack
+                  <MessageSquare size={14} /> Chat
                 </button>
                 <button
                   onClick={() => setCenterPaneTab('map')}
                   className={"flex items-center gap-2 px-3 py-1 text-xs font-medium rounded-sm transition-colors " + (centerPaneTab === 'map' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200')}
                 >
-                  <Network size={14} /> Map
+                  <Network size={14} /> G4rage
                 </button>
               </div>
               <button onClick={toggleRightSidebar} className="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800 transition-colors" title="Toggle Right Sidebar">

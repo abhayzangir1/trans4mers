@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getSessionId } from '@/lib/session';
 
 export async function GET() {
   try {
+    const sessionId = await getSessionId();
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const templates = await prisma.agentTemplate.findMany({
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'asc' },
+      distinct: ['name']
     });
     return NextResponse.json(templates);
   } catch (error: unknown) {
@@ -15,6 +22,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const sessionId = await getSessionId();
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { name, role, systemPrompt, allowedTools } = body;
 

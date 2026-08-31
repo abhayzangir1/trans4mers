@@ -14,18 +14,20 @@ export async function POST(
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Find or create the DM channel
+    // Find or create the DM channel — use DM-<agentId> convention to match
+    // messagingTools.ts, AgentFactory.ts, and post/route.ts
+    const channelUniqueName = `DM-${agentId}`;
     const channel = await prisma.channel.upsert({
       where: {
         conversationId_name: {
           conversationId,
-          name: agentName
+          name: channelUniqueName
         }
       },
       update: {},
       create: {
         conversationId,
-        name: agentName,
+        name: channelUniqueName,
         isDM: true
       }
     });

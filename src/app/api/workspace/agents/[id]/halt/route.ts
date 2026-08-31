@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { validateConversationAccess } from '@/lib/withSession';
 
 export async function POST(
   request: Request,
@@ -16,6 +17,9 @@ export async function POST(
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
+
+    const auth = await validateConversationAccess(agent.conversationId);
+    if (!auth.authorized) return auth.response;
 
     // Update status to HALTED
     const updated = await prisma.agentInstance.update({

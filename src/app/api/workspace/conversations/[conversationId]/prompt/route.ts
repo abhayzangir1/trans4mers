@@ -1,28 +1,23 @@
-import { NextResponse, NextRequest } from 'next/server';
+import { NextResponse, NextRequest, after } from 'next/server';
 import { prisma } from '@/lib/db';
 import { AgentFactory } from '@/lib/AgentFactory';
 import { getSessionId } from '@/lib/session';
+import { sseBus } from '@/lib/sseBus';
+import { validateConversationAccess } from '@/lib/withSession';
 
 export async function POST(
   request: NextRequest,
   props: { params: Promise<{ conversationId: string }> }
 ) {
   try {
-    const sessionId = await getSessionId();
     const params = await props.params;
+    const auth = await validateConversationAccess(params.conversationId);
+    if (!auth.authorized) return auth.response;
+
     const body = await request.json();
     const { prompt, targetAgentId } = body;
     
     if (!prompt) return NextResponse.json({ error: 'Prompt required' }, { status: 400 });
-
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: params.conversationId },
-      include: { project: true }
-    });
-
-    if (!conversation || conversation.project.sessionId !== sessionId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
 
     let targetAgent = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT id FROM "Conversation" WHERE id = ${params.conversationId} FOR UPDATE`;
@@ -67,8 +62,19 @@ export async function POST(
           include: { template: true }
         });
         if (!agent) {
-          const defaultTemplate = templates[0];
-          if (!defaultTemplate) throw new Error('No agent templates available');
+          let defaultTemplate = templates.find(t => t.name === 'Boss Agent');
+          
+          if (!defaultTemplate) {
+            defaultTemplate = await tx.agentTemplate.create({
+              data: {
+                name: 'Boss Agent',
+                role: 'Chief AI Orchestrator',
+                systemPrompt: 'You are the Boss Agent. You are the general-purpose orchestrator. You handle general queries, assign teams, and delegate work to specialized agents using the proposeSubAgent and sendDirectMessage tools.',
+                allowedTools: []
+              }
+            });
+          }
+
           agent = await tx.agentInstance.create({
             data: {
               conversationId: params.conversationId,
@@ -86,7 +92,7 @@ export async function POST(
       return NextResponse.json({ error: 'Target agent not found' }, { status: 404 });
     }
 
-    const channelName = targetAgentId && ('template' in targetAgent) ? (targetAgent as any).template.name : 'shared-blackboard';
+    const channelName = targetAgentId ? `DM-${targetAgent.id}` : 'shared-blackboard';
 
     let channel = await prisma.channel.upsert({
       where: {
@@ -111,54 +117,20 @@ export async function POST(
         content: prompt
       }
     });
-    try {
-      const payload = JSON.stringify({ id: params.conversationId });
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        async start(controller) {
-          controller.enqueue(encoder.encode(JSON.stringify({ success: true, agentInstanceId: targetAgent.id }) + '\n'));
-          
-          let isAborted = false;
-          const pingInterval = setInterval(() => {
-            if (!isAborted) {
-              controller.enqueue(encoder.encode(JSON.stringify({ type: 'ping' }) + '\n'));
-            }
-          }, 10000);
-
-          try {
-            await AgentFactory.runReActLoop(targetAgent.id, prompt, undefined, (progress) => {
-               if (!isAborted) {
-                 controller.enqueue(encoder.encode(JSON.stringify({ type: 'progress', data: progress }) + '\n'));
-               }
-            }, channel.id);
-          } catch (err: unknown) {
-            console.error('Background agent loop failed:', err);
-            if (!isAborted) {
-               controller.enqueue(encoder.encode(JSON.stringify({ type: 'error', error: String(err) }) + '\n'));
-            }
-          } finally {
-            clearInterval(pingInterval);
-            if (!isAborted) {
-               controller.close();
-            }
-          }
-        },
-        cancel() {
-          console.log('Stream cancelled by client');
-        }
+    // Emit SSE event for the new human message
+    sseBus.emit(params.conversationId, {
+      type: 'message_update',
+      data: { channelId: channel.id }
+    });
+    
+    // Fire and forget the agent loop using Next.js after()
+    after(() => {
+      AgentFactory.runReActLoop(targetAgent.id, prompt, undefined, () => {}, channel.id).catch(err => {
+        console.error('Background agent loop failed:', err);
       });
+    });
 
-      return new Response(stream, {
-        headers: {
-          'Content-Type': 'application/x-ndjson',
-          'Cache-Control': 'no-cache, no-transform',
-          'Connection': 'keep-alive',
-        },
-      });
-    } catch (e: unknown) {
-      console.error('Prompt dispatch error:', e);
-      throw e;
-    }
+    return NextResponse.json({ success: true, agentInstanceId: targetAgent.id });
   } catch (error: unknown) {
     console.error('Error dispatching global prompt:', error);
     return NextResponse.json({ error: 'Failed to dispatch prompt' }, { status: 500 });

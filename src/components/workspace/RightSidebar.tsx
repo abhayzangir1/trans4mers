@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useOSStore, RightPaneState } from '@/store/useOSStore';
+import { useDebouncedCallback } from 'use-debounce';
 import { X, FileText, Terminal, UploadCloud, CheckSquare, PanelRight } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import TerminalWidget from './TerminalWidget';
@@ -15,7 +16,7 @@ export default function RightSidebar() {
   const conversationId = params?.conversationId as string;
   const projectId = params?.projectId as string;
   
-  const [codeContent, setCodeContent] = useState('// Loading...');
+  const [codeContent, setCodeContent] = useState('');
   const [fileTree, setFileTree] = useState<{name: string, path: string}[]>([]);
   const [showToast, setShowToast] = useState(false);
 
@@ -24,13 +25,14 @@ export default function RightSidebar() {
     setRightPaneState('files');
   }, [conversationId, setActiveFile, setRightPaneState]);
 
-  const handleSave = async () => {
+  const handleSave = async (contentToSave?: string) => {
     if (!activeFilePath) return;
+    const content = contentToSave !== undefined ? contentToSave : codeContent;
     try {
       const res = await fetch('/api/workspace', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: activeFilePath, content: codeContent })
+        body: JSON.stringify({ path: activeFilePath, content, projectId })
       });
       if (res.ok) {
         setShowToast(true);
@@ -43,24 +45,33 @@ export default function RightSidebar() {
     }
   };
 
+  const debouncedSave = useDebouncedCallback((content: string) => {
+    handleSave(content);
+  }, 1000);
+
   // Fetch the file tree
   React.useEffect(() => {
     if (rightPaneState === 'files') {
-      fetch('/api/workspace?action=list_files')
+      fetch(`/api/workspace?action=list_files&projectId=${projectId || ''}`)
         .then(r => r.json())
         .then(data => { if (data.files) setFileTree(data.files); })
         .catch(console.error);
     }
-  }, [rightPaneState]);
+  }, [rightPaneState, projectId]);
 
   // Fetch the active file content
   React.useEffect(() => {
     if (activeFilePath) {
-      setCodeContent('// Loading...');
-      fetch(`/api/workspace?action=read_file&path=${encodeURIComponent(activeFilePath)}`)
+      const controller = new AbortController();
+      setCodeContent('');
+      fetch(`/api/workspace?action=read_file&path=${encodeURIComponent(activeFilePath)}&projectId=${projectId || ''}`, { signal: controller.signal })
         .then(r => r.json())
         .then(data => { setCodeContent(data.content || ''); })
-        .catch(() => setCodeContent('// Error loading file'));
+        .catch((err) => {
+          if (err.name === 'AbortError') return;
+          setCodeContent('// Error loading file');
+        });
+      return () => controller.abort();
     }
   }, [activeFilePath]);
 
@@ -99,7 +110,7 @@ export default function RightSidebar() {
               <span className="font-mono truncate">{activeFilePath}</span>
               <div className="flex items-center gap-2">
                 {showToast && <span className="text-green-400">Saved!</span>}
-                <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded">Save</button>
+                <button onClick={() => handleSave()} className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded">Save</button>
                 <button onClick={() => { setActiveFile(null); setRightPaneState('files'); }} className="hover:text-white ml-2"><X size={14} /></button>
               </div>
             </div>
@@ -114,7 +125,10 @@ export default function RightSidebar() {
                 theme="vs-dark"
                 path={activeFilePath || 'unknown.ts'}
                 value={codeContent}
-                onChange={(val) => setCodeContent(val || '')}
+                onChange={(val) => {
+                  setCodeContent(val || '');
+                  debouncedSave(val || '');
+                }}
                 options={{ minimap: { enabled: false }, fontSize: 12, wordWrap: 'on' }}
               />
             </div>
@@ -142,7 +156,7 @@ export default function RightSidebar() {
           </div>
         );
       case 'terminal':
-        return <TerminalWidget />;
+        return <TerminalWidget terminalId={conversationId} />;
       case 'tasks':
         return <TasksTab conversationId={conversationId} />;
       case 'uploads':
@@ -168,7 +182,7 @@ export default function RightSidebar() {
 }
 
 function TasksTab({ conversationId }: { conversationId: string }) {
-  const [agents, setAgents] = useState<Array<{id: string; name: string; role: string; status?: string}>>([]);
+  const [agents, setAgents] = useState<Array<{id: string; template?: { name?: string; role?: string }; status?: string}>>([]);
   React.useEffect(() => {
     if (!conversationId) return;
     fetch(`/api/workspace/conversations/${conversationId}/agents`)
@@ -193,7 +207,7 @@ function TasksTab({ conversationId }: { conversationId: string }) {
           {agents.map(a => (
             <div key={a.id} className="bg-zinc-900 border border-zinc-800 p-2 rounded flex items-center justify-between">
               <div>
-                <div className="text-white text-xs font-bold">{a.name || a.role || 'Agent Process'}</div>
+                <div className="text-white text-xs font-bold">{a.template?.name || a.template?.role || 'Agent Process'}</div>
                 <div className="text-[10px] text-zinc-500">{a.id}</div>
               </div>
               <div className={`text-[10px] font-mono ${a.status === 'RUNNING' ? 'text-green-400 animate-pulse' : 'text-zinc-400'}`}>
@@ -253,15 +267,16 @@ function UploadsTab({ conversationId, projectId }: { conversationId: string, pro
   return (
     <div className="p-4 text-zinc-400 text-sm">
       <h3 className="text-white font-medium mb-3">Project Assets & Uploads</h3>
-      <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-lg text-center border-dashed mb-4 relative">
+      <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-lg text-center border-dashed mb-4">
         <UploadCloud size={24} className="mx-auto text-zinc-600 mb-2" />
         <p className="text-xs text-zinc-500 mb-3">Upload files to your local bucket</p>
         <input 
+          id="file-upload"
           type="file" 
           onChange={handleUpload} 
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+          className="hidden" 
         />
-        <button className="bg-zinc-800 hover:bg-zinc-700 text-white text-xs px-3 py-1 rounded transition-colors pointer-events-none">Select Files</button>
+        <button onClick={() => document.getElementById('file-upload')?.click()} className="bg-zinc-800 hover:bg-zinc-700 text-white text-xs px-3 py-1 rounded transition-colors">Select Files</button>
       </div>
 
       <div className="space-y-2">

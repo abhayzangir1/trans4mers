@@ -3,8 +3,9 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ReactFlow, MiniMap, Controls, Background, Node, Edge, useNodesState, useEdgesState , addEdge, Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-// @ts-expect-error
+// @ts-expect-error dagre types are missing or broken
 import dagre from 'dagre';
+import toast from 'react-hot-toast';
 
 interface AgentInstance {
   id: string;
@@ -25,18 +26,29 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [liveLogs, setLiveLogs] = useState<{id: string, content: string}[]>([]);
   const [inlineCommand, setInlineCommand] = useState('');
+  const [delegationModal, setDelegationModal] = useState<{ isOpen: boolean; params: Connection | null; task: string }>({ isOpen: false, params: null, task: '' });
 
   const onConnect = useCallback(
-    (params: Connection) => {
+    async (params: Connection) => {
       if (params.target === 'user') {
-        alert('Cannot delegate tasks to the Human User.');
+        toast.error('Cannot delegate tasks to the Human User.');
         return;
       }
       
-      const task = window.prompt('What task do you want to delegate via this connection?');
-      if (!task) return;
+      setDelegationModal({ isOpen: true, params, task: '' });
+    },
+    [],
+  );
 
-      fetch(`/api/workspace/conversations/${conversationId}/prompt`, {
+  const handleDelegateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { params, task } = delegationModal;
+    if (!params || !task.trim()) return;
+
+    setDelegationModal({ isOpen: false, params: null, task: '' });
+
+    try {
+      const res = await fetch(`/api/workspace/conversations/${conversationId}/prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -44,11 +56,18 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
           targetAgentId: params.target 
         })
       });
-
-      setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: '#eab308', strokeWidth: 2 } }, eds));
-    },
-    [conversationId, setEdges],
-  );
+      
+      if (res.ok) {
+        setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: 'var(--accent, #eab308)', strokeWidth: 2 } }, eds));
+      } else {
+        toast.error('Failed to delegate task.');
+        console.error('Failed to delegate task. Server returned non-ok response.');
+      }
+    } catch (err) {
+      toast.error('Failed to delegate task.');
+      console.error('Failed to delegate task:', err);
+    }
+  };
 
   const sendInlineCommand = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,12 +77,17 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
     setInlineCommand('');
 
     try {
-      await fetch(`/api/workspace/conversations/${conversationId}/prompt`, {
+      const res = await fetch(`/api/workspace/conversations/${conversationId}/prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: cmd, targetAgentId: selectedAgentId })
       });
+      if (!res.ok) {
+        toast.error('Failed to send command.');
+        console.error('Failed to send inline command. Server returned non-ok response.');
+      }
     } catch (err) {
+      toast.error('Failed to send command.');
       console.error('Failed to send inline command:', err);
     }
   };
@@ -98,12 +122,13 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
     try {
       await fetch(`/api/workspace/agents/${agentId}/halt${force ? '?force=true' : ''}`, { method: 'POST' });
     } catch (e) {
+      toast.error('Failed to halt agent.');
       console.error(e);
     }
   };
 
-  const fetchAgentData = useCallback(() => {
-    fetch(`/api/workspace/conversations/${conversationId}/agents`)
+  const fetchAgentData = useCallback((signal?: AbortSignal) => {
+    fetch(`/api/workspace/conversations/${conversationId}/agents?_t=${Date.now()}`, { signal, cache: 'no-store' })
       .then(res => res.json())
       .then((agents) => {
         if (!Array.isArray(agents)) {
@@ -115,7 +140,7 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
           type: 'default',
           position: { x: 0, y: 0 },
           data: { label: <div className="font-bold text-sm px-4 py-2">Human User</div> },
-          style: { background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px' }
+          style: { background: 'var(--primary, #2563eb)', color: 'var(--foreground, white)', border: 'none', borderRadius: '8px' }
         }];
         const newEdges: Edge[] = [];
 
@@ -146,9 +171,9 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
               )
             },
             style: { 
-              background: '#18181b', 
-              color: 'white', 
-              border: agent.status === 'RUNNING' ? '2px solid #22c55e' : '1px solid #3f3f46', 
+              background: 'var(--node-bg, #18181b)', 
+              color: 'var(--foreground, white)', 
+              border: agent.status === 'RUNNING' ? '2px solid var(--success, #22c55e)' : '1px solid var(--node-border, #3f3f46)', 
               borderRadius: '8px' 
             }
           });
@@ -160,7 +185,7 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
               target: agent.id,
               type: 'smoothstep',
               animated: agent.status === 'RUNNING',
-              style: { stroke: agent.status === 'RUNNING' ? '#22c55e' : '#52525b' }
+              style: { stroke: agent.status === 'RUNNING' ? 'var(--success, #22c55e)' : 'var(--edge, #52525b)' }
             });
           } else {
             newEdges.push({
@@ -169,7 +194,7 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
               target: agent.id,
               type: 'smoothstep',
               animated: agent.status === 'RUNNING',
-              style: { stroke: agent.status === 'RUNNING' ? '#3b82f6' : '#52525b' }
+              style: { stroke: agent.status === 'RUNNING' ? 'var(--primary, #3b82f6)' : 'var(--edge, #52525b)' }
             });
           }
         });
@@ -179,20 +204,25 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
         setEdges(layoutedEdges);
         setLoading(false);
       })
-      .catch(console.error);
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error(error);
+          setLoading(false);
+        }
+      });
   }, [conversationId, setNodes, setEdges]);
 
   // Live Feed logic
   const lastLogDate = useRef<string | null>(null);
 
-  const loadLogs = useCallback(async (agentId: string, isIncremental: boolean = false) => {
+  const loadLogs = useCallback(async (agentId: string, isIncremental: boolean = false, signal?: AbortSignal) => {
     try {
       let url = `/api/workspace/agents/${agentId}/logs`;
       if (isIncremental && lastLogDate.current) {
         url += `?since=${lastLogDate.current}`;
       }
       
-      const res = await fetch(url);
+      const res = await fetch(url, { signal });
       const logs = await res.json();
       
       if (logs.length > 0) {
@@ -206,8 +236,8 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
         // eslint-disable-next-line
       setLiveLogs([]);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== 'AbortError') console.error(err);
     }
   }, []);
 
@@ -218,18 +248,23 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
       setLiveLogs([]);
       return;
     }
+    
+    const controller = new AbortController();
     lastLogDate.current = null;
-    loadLogs(selectedAgentId, false);
+    loadLogs(selectedAgentId, false, controller.signal);
+    
+    return () => controller.abort();
   }, [selectedAgentId, loadLogs]);
 
   useEffect(() => {
-    fetchAgentData();
+    const controller = new AbortController();
+    fetchAgentData(controller.signal);
     // Listen to agent_updates to refresh statuses dynamically and real-time logs
-    const eventSource = new EventSource('/api/sse');
+    const eventSource = new EventSource(`/api/sse?conversationId=${conversationId}`);
     eventSource.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
-        if (payload.channel === 'agent_updates' && (payload.payload === conversationId || payload.payload?.id === conversationId)) {
+        if (payload.type === 'agent_update') {
           fetchAgentData();
           if (selectedAgentId) {
             loadLogs(selectedAgentId, true);
@@ -239,7 +274,10 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
         console.error('SSE Parse error:', err);
       }
     };
-    return () => eventSource.close();
+    return () => {
+      controller.abort();
+      eventSource.close();
+    };
   }, [conversationId, selectedAgentId, fetchAgentData, loadLogs]);
 
 
@@ -250,6 +288,7 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
       if (selectedAgentId === agentId) setSelectedAgentId(null);
       fetchAgentData();
     } catch (e) {
+      toast.error('Failed to fire agent.');
       console.error(e);
     }
   };
@@ -332,6 +371,37 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
               </form>
             </div>
           )}
+        </div>
+      )}
+
+      {delegationModal.isOpen && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
+          <form onSubmit={handleDelegateSubmit} className="bg-zinc-900 border border-zinc-800 p-6 rounded-lg shadow-xl w-96">
+            <h3 className="text-white font-bold mb-4">Delegate Task</h3>
+            <textarea 
+              value={delegationModal.task}
+              onChange={(e) => setDelegationModal({ ...delegationModal, task: e.target.value })}
+              placeholder="What task do you want to delegate?"
+              className="w-full bg-black border border-zinc-700 rounded p-3 text-sm text-white mb-4 resize-none h-24 focus:outline-none focus:border-blue-500"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button 
+                type="button" 
+                onClick={() => setDelegationModal({ isOpen: false, params: null, task: '' })}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                disabled={!delegationModal.task.trim()}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50"
+              >
+                Delegate
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

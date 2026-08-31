@@ -5,7 +5,7 @@ import * as path from 'path';
 
 const AGENT_WORKSPACE_DIR = process.env.AGENT_WORKSPACE_DIR || '.trans4mers-workspaces';
 
-export const getFileSystemTools = (sessionId: string) => {
+export const getFileSystemTools = (sessionId: string, projectId: string) => {
   const readFileTool = ai.defineTool(
     {
       name: 'readFile',
@@ -21,9 +21,14 @@ export const getFileSystemTools = (sessionId: string) => {
     },
     async (input) => {
       try {
-        const safeRelativePath = path.normalize(input.filePath).replace(/^(\.\.(\/|\\|$))+/, '');
-        const fullRelativePath = path.join(AGENT_WORKSPACE_DIR, sessionId, safeRelativePath);
-        const content = await FileSystem.readFile(fullRelativePath);
+        const baseDir = (!projectId || projectId === 'null' || projectId === 'undefined') 
+          ? path.resolve(AGENT_WORKSPACE_DIR, sessionId, 'global_no_project') 
+          : path.resolve(AGENT_WORKSPACE_DIR, sessionId, projectId);
+        const resolvedPath = path.resolve(baseDir, input.filePath);
+        if (!resolvedPath.startsWith(baseDir + path.sep) && resolvedPath !== baseDir) {
+          throw new Error("Invalid file path");
+        }
+        const content = await FileSystem.readFile(resolvedPath);
         return { success: true, content, message: "Successfully read file " + input.filePath };
       } catch (err: unknown) {
         return { success: false, message: "Error reading file: " + (err instanceof Error ? err.message : String(err)) };
@@ -46,9 +51,14 @@ export const getFileSystemTools = (sessionId: string) => {
     },
     async (input) => {
       try {
-        const safeRelativePath = path.normalize(input.filePath).replace(/^(\.\.(\/|\\|$))+/, '');
-        const fullRelativePath = path.join(AGENT_WORKSPACE_DIR, sessionId, safeRelativePath);
-        await FileSystem.writeFile(fullRelativePath, input.content);
+        const baseDir = (!projectId || projectId === 'null' || projectId === 'undefined') 
+          ? path.resolve(AGENT_WORKSPACE_DIR, sessionId, 'global_no_project') 
+          : path.resolve(AGENT_WORKSPACE_DIR, sessionId, projectId);
+        const resolvedPath = path.resolve(baseDir, input.filePath);
+        if (!resolvedPath.startsWith(baseDir + path.sep) && resolvedPath !== baseDir) {
+          throw new Error("Invalid file path");
+        }
+        await FileSystem.writeFile(resolvedPath, input.content);
         return { success: true, message: "Successfully wrote to file " + input.filePath };
       } catch (err: unknown) {
         return { success: false, message: "Error writing file: " + (err instanceof Error ? err.message : String(err)) };
@@ -72,12 +82,17 @@ export const getFileSystemTools = (sessionId: string) => {
     async (input) => {
       try {
         const dirPath = input.directoryPath || '';
-        const safeRelativePath = path.normalize(dirPath).replace(/^(\.\.(\/|\\|$))+/, '');
-        const fullRelativePath = path.join(AGENT_WORKSPACE_DIR, sessionId, safeRelativePath);
-        const files = await FileSystem.listFiles(fullRelativePath);
+        const baseDir = (!projectId || projectId === 'null' || projectId === 'undefined') 
+          ? path.resolve(AGENT_WORKSPACE_DIR, sessionId, 'global_no_project') 
+          : path.resolve(AGENT_WORKSPACE_DIR, sessionId, projectId);
+        const resolvedPath = path.resolve(baseDir, dirPath);
+        if (!resolvedPath.startsWith(baseDir + path.sep) && resolvedPath !== baseDir) {
+          throw new Error("Invalid file path");
+        }
+        const files = await FileSystem.listFiles(resolvedPath);
         
         // Strip the internal secure prefix before sending to agent
-        const prefixToRemove = path.join(AGENT_WORKSPACE_DIR, sessionId) + '/';
+        const prefixToRemove = baseDir + path.sep;
         const cleanFiles = files.map(f => {
           const normalizedF = f.replace(/\\/g, '/');
           const cleanPrefix = prefixToRemove.replace(/\\/g, '/');

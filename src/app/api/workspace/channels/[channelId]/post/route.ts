@@ -1,6 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getSessionId } from '@/lib/session';
+import { sseBus } from '@/lib/sseBus';
+import { AgentFactory } from '@/lib/AgentFactory';
 
 export async function POST(
   request: Request,
@@ -36,6 +38,33 @@ export async function POST(
         content,
       }
     });
+
+    sseBus.emit(channel.conversationId, {
+      type: 'message_update',
+      data: { channelId }
+    });
+
+    if (channel.name === 'shared-blackboard') {
+      const allAgents = await prisma.agentInstance.findMany({
+        where: { conversationId: channel.conversationId, status: { in: ['IDLE', 'ERROR', 'HALTED'] } }
+      });
+      for (const agent of allAgents) {
+        after(() => {
+          AgentFactory.runReActLoop(agent.id, `[USER POST TO BLACKBOARD]: ${content}`, undefined, undefined, channelId).catch(console.error);
+        });
+      }
+    } else if (channel.isDM) {
+      // Find the specific agent the DM is for. Channel name is "DM-<agentId>"
+      const targetAgentId = channel.name.replace('DM-', '');
+      const agent = await prisma.agentInstance.findFirst({
+        where: { id: targetAgentId, status: { in: ['IDLE', 'ERROR', 'HALTED'] } }
+      });
+      if (agent) {
+        after(() => {
+          AgentFactory.runReActLoop(agent.id, `[USER DM]: ${content}`, undefined, undefined, channelId).catch(console.error);
+        });
+      }
+    }
 
     return NextResponse.json({ success: true, message });
   } catch (error: any) {

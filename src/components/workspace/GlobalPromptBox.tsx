@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, XCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface AgentTemplate {
   id: string;
@@ -13,6 +14,7 @@ import ApprovalWidget from './ApprovalWidget';
 
 export default function GlobalPromptBox({ conversationId }: { conversationId: string }) {
   const [prompt, setPrompt] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const [showMentions, setShowMentions] = useState(false);
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [mentionFilter, setMentionFilter] = useState('');
@@ -62,20 +64,27 @@ export default function GlobalPromptBox({ conversationId }: { conversationId: st
   };
 
   const handleSend = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || isSending) return;
     
-    const currentPrompt = prompt;
-    setPrompt(''); // Optimistic clear
-    
+    setIsSending(true);
     try {
-      await fetch(`/api/workspace/conversations/${conversationId}/prompt`, {
+      const res = await fetch(`/api/workspace/conversations/${conversationId}/prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: currentPrompt, model: selectedModel })
+        body: JSON.stringify({ prompt, model: selectedModel })
       });
+      
+      if (res.ok) {
+        setPrompt('');
+      } else {
+        toast.error('Failed to send prompt. Please check your API configuration.');
+        console.error('Failed to send global prompt');
+      }
     } catch (err) {
+      toast.error('Network error sending prompt.');
       console.error('Failed to send global prompt:', err);
-      setPrompt(currentPrompt); // Revert on failure
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -83,6 +92,7 @@ export default function GlobalPromptBox({ conversationId }: { conversationId: st
     try {
       await fetch(`/api/workspace/conversations/${conversationId}/halt`, { method: 'POST' });
     } catch (err) {
+      toast.error('Failed to halt swarm.');
       console.error('Failed to halt swarm:', err);
     }
   };
@@ -91,7 +101,8 @@ export default function GlobalPromptBox({ conversationId }: { conversationId: st
 
   // Determine who the prompt is targeting
   const mentionedAgent = templates.find(t => prompt.toLowerCase().includes(`@${t.name.toLowerCase()}`));
-  const targetLabel = mentionedAgent ? `@${mentionedAgent.name}` : 'Boss Agent';
+  const defaultAgent = templates.find(t => t.name === 'Boss Agent') || templates.find(t => t.name.toLowerCase().includes('boss')) || templates[0];
+  const targetLabel = mentionedAgent ? `@${mentionedAgent.name}` : (defaultAgent ? defaultAgent.name : 'Boss Agent');
 
   return (
     <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-zinc-950 via-zinc-950/90 to-transparent flex flex-col items-center pointer-events-none">
@@ -157,6 +168,8 @@ export default function GlobalPromptBox({ conversationId }: { conversationId: st
             
             {availableModels.length > 0 && (
               <select 
+                id="model-selector"
+                name="model-selector"
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
                 className="bg-zinc-800 text-zinc-300 border border-zinc-700 rounded p-1.5 text-xs focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
@@ -176,7 +189,7 @@ export default function GlobalPromptBox({ conversationId }: { conversationId: st
             </button>
             <button 
               onClick={handleSend}
-              disabled={!prompt.trim()}
+              disabled={!prompt.trim() || isSending}
               className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all shadow-md"
             >
               <Send size={18} />

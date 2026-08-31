@@ -54,12 +54,14 @@ export const getMessagingTools = (
            targetAgentName = (targetAgent as { template: { name: string } }).template.name;
         }
 
+        const channelUniqueName = `DM-${targetAgent.id}`;
+
         const channel = await prisma.channel.upsert({
           where: {
-             conversationId_name: { conversationId, name: targetAgentName }
+             conversationId_name: { conversationId, name: channelUniqueName }
           },
           update: {},
-          create: { conversationId, name: targetAgentName, isDM: true }
+          create: { conversationId, name: channelUniqueName, isDM: true }
         });
 
         await prisma.message.create({

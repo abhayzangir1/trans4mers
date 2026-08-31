@@ -15,7 +15,7 @@ export async function getSessionId(): Promise<string> {
     sessionId = uuidv4();
     cookieStore.set({
       name: SESSION_COOKIE_NAME,
-      value: sessionId,
+      value: sessionId as string,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -24,7 +24,7 @@ export async function getSessionId(): Promise<string> {
     });
   }
 
-  return sessionId;
+  return sessionId as string;
 }
 
 

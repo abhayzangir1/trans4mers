@@ -48,7 +48,20 @@ async function getConfig(): Promise<McpConfig> {
 export async function GET() {
   try {
     const config = await getConfig();
-    return NextResponse.json(config);
+    
+    const redactedConfig = { ...config };
+    if (redactedConfig.apiKeys) {
+      redactedConfig.apiKeys = { ...redactedConfig.apiKeys };
+      for (const [key, value] of Object.entries(redactedConfig.apiKeys)) {
+        if (value && value.length > 4) {
+          redactedConfig.apiKeys[key] = `sk-...${value.slice(-4)}`;
+        } else if (value) {
+          redactedConfig.apiKeys[key] = '***';
+        }
+      }
+    }
+
+    return NextResponse.json(redactedConfig);
   } catch (error: unknown) {
     console.error('Error in GET /api/settings/mcp:', error);
     return NextResponse.json({ error: 'Failed to read config' }, { status: 500 });
@@ -60,20 +73,42 @@ export async function POST(request: Request) {
     const sessionId = await getSessionId();
     const settingsKey = `mcp_config_${sessionId}`;
     const payload = await request.json();
-    if (!payload || typeof payload !== 'object') {
-      return NextResponse.json({ error: 'Invalid payload.' }, { status: 400 });
+    
+    // Validate payload shape
+    const { z } = await import('zod');
+    const settingsSchema = z.object({
+      mcpServers: z.record(z.unknown()).optional(),
+      plugins: z.record(z.unknown()).optional(),
+      overseer: z.record(z.unknown()).optional(),
+      theme: z.record(z.unknown()).optional(),
+      apiKeys: z.record(z.string()).optional()
+    });
+
+    const parsed = settingsSchema.safeParse(payload);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid payload schema', details: parsed.error }, { status: 400 });
     }
+    const validPayload = parsed.data;
 
     const config = await getConfig();
     
     // Deep merge payload into config
     const merged: McpConfig = { ...config };
     
-    if (payload.mcpServers) merged.mcpServers = { ...merged.mcpServers, ...payload.mcpServers };
-    if (payload.plugins) merged.plugins = { ...merged.plugins, ...payload.plugins };
-    if (payload.overseer) merged.overseer = { ...merged.overseer, ...payload.overseer };
-    if (payload.theme) merged.theme = { ...merged.theme, ...payload.theme };
-    if (payload.apiKeys) merged.apiKeys = { ...merged.apiKeys, ...payload.apiKeys };
+    if (validPayload.mcpServers) merged.mcpServers = { ...merged.mcpServers, ...validPayload.mcpServers };
+    if (validPayload.plugins) merged.plugins = { ...merged.plugins, ...validPayload.plugins };
+    if (validPayload.overseer) merged.overseer = { ...merged.overseer, ...validPayload.overseer };
+    if (validPayload.theme) merged.theme = { ...merged.theme, ...validPayload.theme };
+    if (validPayload.apiKeys) {
+      const filteredKeys = { ...validPayload.apiKeys };
+      // Prevent data corruption: don't overwrite real DB keys with redacted UI placeholders
+      for (const [key, value] of Object.entries(filteredKeys)) {
+        if (typeof value === 'string' && (value.startsWith('sk-...') || value === '***')) {
+          delete filteredKeys[key];
+        }
+      }
+      merged.apiKeys = { ...merged.apiKeys, ...filteredKeys };
+    }
     
     if (payload.name && payload.command) {
         if (!merged.mcpServers) merged.mcpServers = {};

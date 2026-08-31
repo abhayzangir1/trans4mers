@@ -50,6 +50,7 @@ export const getSwarmTools = (agentInstanceId: string, conversationId: string) =
         });
 
         return { 
+          _hitl: true, // Special flag to engine
           success: true, 
           message: `Successfully proposed sub-agent. Human approval is required. ID: ${subInstance.id}`,
           subAgentInstanceId: subInstance.id

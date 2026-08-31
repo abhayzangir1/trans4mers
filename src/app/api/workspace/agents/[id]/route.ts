@@ -1,13 +1,24 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getSessionId } from '@/lib/session';
 
 export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
   try {
+    const sessionId = await getSessionId();
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const { id } = await props.params;
 
     const agent = await prisma.agentInstance.findUnique({ where: { id } });
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
+
+    const { validateConversationAccess } = await import('@/lib/withSession');
+    const auth = await validateConversationAccess(agent.conversationId);
+    if (!auth.authorized) {
+      return auth.response;
     }
 
     await prisma.agentInstance.update({

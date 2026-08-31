@@ -33,8 +33,8 @@ export default function LeftSidebar() {
   const [isConvModalOpen, setConvModalOpen] = useState(false);
   const [activeProjectIdForConv, setActiveProjectIdForConv] = useState<string | null>(null);
 
-  const fetchProjects = () => {
-    fetch('/api/workspace/projects')
+  const fetchProjects = (signal?: AbortSignal) => {
+    fetch(`/api/workspace/projects?_t=${Date.now()}`, { signal, cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (!Array.isArray(data)) {
@@ -52,6 +52,7 @@ export default function LeftSidebar() {
         setLoading(false);
       })
       .catch((err) => {
+        if (err.name === 'AbortError') return;
         console.error('Failed to fetch projects', err);
         setProjects([]);
         setLoading(false);
@@ -59,7 +60,9 @@ export default function LeftSidebar() {
   };
 
   useEffect(() => {
-    fetchProjects();
+    const controller = new AbortController();
+    fetchProjects(controller.signal);
+    return () => controller.abort();
   }, []);
 
   const toggleProject = (projectId: string) => {
@@ -74,7 +77,9 @@ export default function LeftSidebar() {
   return (
     <div className="flex flex-col h-full border-r border-zinc-800 text-sm" style={{ backgroundColor: 'var(--left-pane, #09090b)' }}>
       <div className="p-4 border-b border-zinc-800">
-        <h2 className="font-semibold text-zinc-300 tracking-wide uppercase text-xs mb-3">trans4mers</h2>
+        <h2 className="font-semibold text-zinc-300 tracking-wide uppercase text-xs mb-3 flex items-center">
+          <img src="/trans4mers-logo.png" alt="trans4mers" className="h-6 w-auto object-contain" />
+        </h2>
         <button 
           onClick={() => setProjectModalOpen(true)}
           className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-1.5 px-3 rounded-md transition-colors"

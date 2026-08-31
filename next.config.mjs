@@ -2,6 +2,9 @@
 const nextConfig = {
   output: 'standalone',
   typescript: { ignoreBuildErrors: true },
+  experimental: {
+    after: true,
+  },
   serverExternalPackages: [
     'pg',
     '@google-cloud/pubsub',

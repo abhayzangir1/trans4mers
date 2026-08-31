@@ -4,9 +4,19 @@ import { FileSystem } from '@/lib/FileSystem';
 import { getSessionId } from '@/lib/session';
 import path from 'path';
 
-function getSecurePath(sessionId: string, userPath: string) {
-  const safeRelativePath = path.normalize(userPath).replace(/^(\.\.(\/|\\|$))+/, '');
-  return `.trans4mers-workspaces/${sessionId}/${safeRelativePath}`;
+function getSecurePath(sessionId: string, projectId: string, userPath: string) {
+  // Normalize and remove all leading slashes or relative components to prevent escape
+  const cleanUserPath = userPath.replace(/\\/g, '/');
+  const resolved = path.posix.normalize(cleanUserPath);
+  
+  if (resolved.startsWith('..') || resolved.startsWith('/')) {
+    throw new Error('Path traversal detected');
+  }
+  
+  if (!projectId || projectId === 'null' || projectId === 'undefined') {
+    return `.trans4mers-workspaces/${sessionId}/global_no_project/${resolved}`;
+  }
+  return `.trans4mers-workspaces/${sessionId}/${projectId}/${resolved}`;
 }
 
 export async function GET(request: Request) {
@@ -14,13 +24,14 @@ export async function GET(request: Request) {
     const sessionId = await getSessionId();
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
+    const projectId = searchParams.get('projectId') || '';
 
     if (action === 'read_file') {
       const userPath = searchParams.get('path');
       if (!userPath) return NextResponse.json({ error: 'Missing path' }, { status: 400 });
 
       try {
-        const securePath = getSecurePath(sessionId, userPath);
+        const securePath = getSecurePath(sessionId, projectId, userPath);
         const content = await FileSystem.readFile(securePath);
         return NextResponse.json({ content });
       } catch (e: unknown) {
@@ -31,11 +42,11 @@ export async function GET(request: Request) {
     if (action === 'list_files') {
       const userPath = searchParams.get('path') || '';
       try {
-        const securePath = getSecurePath(sessionId, userPath);
+        const securePath = getSecurePath(sessionId, projectId, userPath);
         const files = await FileSystem.listFiles(securePath);
         
         // Strip the internal secure prefix before sending to client
-        const prefixToRemove = `.trans4mers-workspaces/${sessionId}/`;
+        const prefixToRemove = projectId ? `.trans4mers-workspaces/${sessionId}/${projectId}/` : `.trans4mers-workspaces/${sessionId}/global_no_project/`;
         const cleanFiles = files.map(f => {
           // Fix path slashes for consistent prefix removal across OS
           const normalizedF = f.replace(/\\/g, '/');
@@ -64,6 +75,7 @@ export async function POST(request: Request) {
     const sessionId = await getSessionId();
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
+    const projectId = searchParams.get('projectId') || '';
 
     if (action === 'write_file') {
       const body = await request.json();
@@ -73,7 +85,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Missing path or content' }, { status: 400 });
       }
 
-      const securePath = getSecurePath(sessionId, userPath);
+      const securePath = getSecurePath(sessionId, projectId, userPath);
       await FileSystem.writeFile(securePath, content);
       return NextResponse.json({ success: true });
     }
@@ -86,7 +98,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Missing path' }, { status: 400 });
       }
 
-      const securePath = getSecurePath(sessionId, userPath);
+      const securePath = getSecurePath(sessionId, projectId, userPath);
       await FileSystem.deleteFile(securePath);
       return NextResponse.json({ success: true });
     }
@@ -101,11 +113,12 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const sessionId = await getSessionId();
-    const { path: userPath, content } = await request.json();
+    const body = await request.json();
+    const { path: userPath, content, projectId = '' } = body;
     if (!userPath || typeof content !== 'string') {
       return NextResponse.json({ error: 'Missing path or content' }, { status: 400 });
     }
-    const securePath = getSecurePath(sessionId, userPath);
+    const securePath = getSecurePath(sessionId, projectId, userPath);
     await FileSystem.writeFile(securePath, content);
     return NextResponse.json({ success: true });
   } catch (error) {

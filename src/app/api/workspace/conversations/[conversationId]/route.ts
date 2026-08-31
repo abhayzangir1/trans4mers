@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { validateConversationAccess } from '@/lib/withSession';
 
 export async function GET(
   request: Request,
@@ -7,6 +8,10 @@ export async function GET(
 ) {
   try {
     const params = await props.params;
+    
+    const auth = await validateConversationAccess(params.conversationId);
+    if (!auth.authorized) return auth.response;
+    
     const conversation = await prisma.conversation.findUnique({
       where: { id: params.conversationId },
       include: {

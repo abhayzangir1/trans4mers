@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { validateConversationAccess } from '@/lib/withSession';
 
 const execAsync = promisify(exec);
 
@@ -9,6 +10,11 @@ export async function POST(request: Request) {
   try {
     const { id, action, data } = await request.json();
     if (!id) return NextResponse.json({ error: 'Missing PTY id' }, { status: 400 });
+
+    const access = await validateConversationAccess(id);
+    if (!access.authorized) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     if (action === 'create') {
       return NextResponse.json({ success: true, id });
@@ -18,37 +24,16 @@ export async function POST(request: Request) {
       const command = data?.trim();
       if (!command) return NextResponse.json({ success: true });
 
-      // STRICT CLOUD SECURITY SANDBOX
-      // Block any attempt to read environment variables, sensitive files, or execute destructive commands
-      const lowerCmd = command.toLowerCase();
-      const isDangerous = 
-        lowerCmd.includes('env') || 
-        lowerCmd.includes('printenv') || 
-        lowerCmd.includes('set') || 
-        lowerCmd.includes('export') || 
-        lowerCmd.includes('$') || 
-        lowerCmd.includes('cat') || 
-        lowerCmd.includes('grep') ||
-        lowerCmd.includes('curl') ||
-        lowerCmd.includes('wget') ||
-        lowerCmd.includes('rm ') ||
-        lowerCmd.includes('mv ') ||
-        lowerCmd.includes('chmod') ||
-        lowerCmd.includes('chown') ||
-        lowerCmd.includes('node ') ||
-        lowerCmd.includes('python ') ||
-        lowerCmd.includes('bash ') ||
-        lowerCmd.includes('sh ') ||
-        command.includes('|') ||
-        command.includes('`') ||
-        command.includes(';') ||
-        command.includes('&');
+      // Security check: Block shell injection characters
+      if (/[&|;$><`]/.test(command)) {
+        return NextResponse.json({ error: 'Shell metacharacters are not allowed.' }, { status: 403 });
+      }
 
-      if (isDangerous) {
-        return NextResponse.json({ 
-          success: true, 
-          output: `[SECURITY OVERRIDE] Command execution blocked by Fortified Enterprise Fleet safeguards.\nReason: Attempted to access protected system resources or environment variables in a public cloud deployment.\nOnly Agents may request elevated operations via the requestHumanApproval protocol.` 
-        });
+      // Security check: Enforce safe base commands
+      const baseCommand = command.split(' ')[0];
+      const safeCommands = ['npm', 'npx', 'node', 'git', 'ls', 'dir', 'echo', 'cat', 'pwd', 'whoami', 'prisma'];
+      if (!safeCommands.includes(baseCommand)) {
+        return NextResponse.json({ error: `Command '${baseCommand}' is not in the allowlist.` }, { status: 403 });
       }
 
       // Execute strictly safe commands statelessly
@@ -91,11 +76,16 @@ export async function GET(request: Request) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'Missing PTY id' }, { status: 400 });
 
+  const access = await validateConversationAccess(id);
+  if (!access.authorized) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   // Get most recent command execution for this id that was just created
   const recent = await prisma.commandExecution.findFirst({
      where: { conversationId: id },
      orderBy: { createdAt: 'desc' }
   });
 
-  return NextResponse.json({ output: '' });
+  return NextResponse.json({ output: recent?.output ?? '' });
 }

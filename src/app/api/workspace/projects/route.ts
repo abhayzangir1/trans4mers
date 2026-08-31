@@ -6,6 +6,9 @@ import { getSessionId } from '@/lib/session';
 export async function GET() {
   try {
     const sessionId = await getSessionId();
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const projects = await prisma.project.findMany({
       where: { sessionId },
       orderBy: { updatedAt: 'desc' },

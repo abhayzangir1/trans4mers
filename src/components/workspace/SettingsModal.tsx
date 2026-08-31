@@ -374,9 +374,15 @@ function AppearanceSettings() {
       <div className="space-y-4">
         <div className="bg-zinc-900 p-4 rounded-lg border border-zinc-800 flex justify-between items-center">
           <span className="text-sm font-medium">Dark Mode</span>
-          <div className="w-10 h-5 bg-blue-600 rounded-full flex items-center px-1 justify-end cursor-pointer" onClick={() => saveTheme({...theme, mode: theme.mode === 'dark' ? 'light' : 'dark'})}>
-            <div className={`w-3 h-3 bg-white rounded-full transition-transform ${theme.mode === 'dark' ? '' : '-translate-x-5'}`}></div>
-          </div>
+          <button 
+            type="button"
+            role="switch"
+            aria-checked={theme.mode === 'dark'}
+            className={`w-11 h-6 rounded-full flex items-center px-1 cursor-pointer transition-colors ${theme.mode === 'dark' ? 'bg-blue-600 justify-end' : 'bg-zinc-600 justify-start'}`} 
+            onClick={() => saveTheme({...theme, mode: theme.mode === 'dark' ? 'light' : 'dark'})}
+          >
+            <div className="w-4 h-4 bg-white rounded-full shadow-md"></div>
+          </button>
         </div>
 
         <div className="bg-zinc-900 p-4 rounded-lg border border-zinc-800">

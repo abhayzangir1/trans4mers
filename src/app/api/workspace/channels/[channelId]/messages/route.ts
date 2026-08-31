@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { prisma } from '@/lib/db';
+import { validateChannelAccess } from '@/lib/withSession';
 
 export async function GET(request: Request, props: { params: Promise<{ channelId: string }> }) {
   try {
     const { channelId } = await props.params;
+    const auth = await validateChannelAccess(channelId);
+    if (!auth.authorized) return auth.response;
+
     const messages = await prisma.message.findMany({
       where: { channelId },
       orderBy: { createdAt: 'asc' }
@@ -19,6 +23,9 @@ export async function GET(request: Request, props: { params: Promise<{ channelId
 export async function POST(request: Request, props: { params: Promise<{ channelId: string }> }) {
   try {
     const { channelId } = await props.params;
+    const auth = await validateChannelAccess(channelId);
+    if (!auth.authorized) return auth.response;
+
     const body = await request.json();
     const { content, role = 'user', senderId = 'human' } = body;
 

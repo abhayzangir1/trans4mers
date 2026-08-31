@@ -38,10 +38,10 @@ export default function SlackMode({ conversationId }: { conversationId: string }
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [userId, setUserId] = useState<string>('human');
   const [swarmMembers, setSwarmMembers] = useState<AgentInstance[]>([]);
-  const [metadata, setMetadata] = useState<{ projectName: string, title: string | null } | null>(null);
 
-  const fetchChannels = () => {
-    fetch(`/api/workspace/conversations/${conversationId}/channels?_t=${Date.now()}`)
+
+  const fetchChannels = (signal?: AbortSignal) => {
+    fetch(`/api/workspace/conversations/${conversationId}/channels?_t=${Date.now()}`, { signal, cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -54,47 +54,53 @@ export default function SlackMode({ conversationId }: { conversationId: string }
           });
         }
       })
-      .catch(console.error);
+      .catch(error => {
+        if (error.name !== 'AbortError') console.error(error);
+      });
   };
 
-  const fetchMetadata = () => {
-    fetch(`/api/workspace/conversations/${conversationId}`)
-      .then(res => res.json())
-      .then(data => setMetadata(data))
-      .catch(console.error);
-  };
 
-  const fetchSwarmMembers = () => {
-    fetch(`/api/workspace/conversations/${conversationId}/agents?_t=${Date.now()}`)
+
+  const fetchSwarmMembers = (signal?: AbortSignal) => {
+    fetch(`/api/workspace/conversations/${conversationId}/agents?_t=${Date.now()}`, { signal })
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
           setSwarmMembers(data);
         }
       })
-      .catch(() => toast.error('Failed to fetch swarm members'));
+      .catch(error => {
+        if (error.name !== 'AbortError') toast.error('Failed to fetch swarm members');
+      });
   };
 
   useEffect(() => {
+    const controller = new AbortController();
     setActiveChannel(null);
     setChannels([]);
     setMessages([]);
     setSwarmMembers([]);
-    fetchMetadata();
-    fetch(`/api/settings/mcp?_t=${Date.now()}`)
+
+    fetch(`/api/settings/mcp?_t=${Date.now()}`, { signal: controller.signal })
       .then(res => res.json())
       .then(data => setUserId(data.userId || 'human'))
-      .catch(() => {});
+      .catch((error) => {
+        if (error.name !== 'AbortError') {}
+      });
       
-    fetchChannels();
-    fetchSwarmMembers();
+    fetchChannels(controller.signal);
+    fetchSwarmMembers(controller.signal);
+    
+    return () => controller.abort();
   }, [conversationId]);
 
   useEffect(() => {
     if (!activeChannel) return;
     
+    const controller = new AbortController();
+    
     const loadMessages = () => {
-      fetch(`/api/workspace/channels/${activeChannel.id}/messages?_t=${Date.now()}`)
+      fetch(`/api/workspace/channels/${activeChannel.id}/messages?_t=${Date.now()}`, { signal: controller.signal })
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -102,19 +108,21 @@ export default function SlackMode({ conversationId }: { conversationId: string }
             scrollToBottom();
           }
         })
-        .catch(() => toast.error('Failed to fetch messages'));
+        .catch(error => {
+          if (error.name !== 'AbortError') toast.error('Failed to fetch messages');
+        });
     };
 
     loadMessages();
 
-    const eventSource = new EventSource('/api/sse');
+    const eventSource = new EventSource(`/api/sse?conversationId=${conversationId}`);
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.channel === 'chat_updates' && data.payload?.id === conversationId) {
+        if (data.type === 'message_update') {
           loadMessages();
         }
-        if (data.channel === 'agent_updates' && data.payload?.id === conversationId) {
+        if (data.type === 'agent_update') {
           fetchSwarmMembers();
         }
       } catch (e) {
@@ -122,7 +130,10 @@ export default function SlackMode({ conversationId }: { conversationId: string }
       }
     };
 
-    return () => eventSource.close();
+    return () => {
+      controller.abort();
+      eventSource.close();
+    };
   }, [activeChannel, conversationId]);
 
   const scrollToBottom = () => {
@@ -158,51 +169,43 @@ export default function SlackMode({ conversationId }: { conversationId: string }
 
     const msg = inputText;
     setInputText('');
+    
+    const optimisticId = Math.random().toString();
+    const optimisticMsg = {
+      id: optimisticId,
+      channelId: activeChannel.id,
+      senderId: userId,
+      role: 'user',
+      content: msg,
+      createdAt: new Date().toISOString(),
+      requiresApproval: false
+    } as any;
+    
+    setMessages(prev => [...prev, optimisticMsg]);
+    scrollToBottom();
 
     try {
-      if (activeChannel.isDM) {
-        // Find the target agent by name matching the DM channel
-        const targetAgent = swarmMembers.find(a => a.template.name === activeChannel.name);
-        
-        // Trigger the agent orchestrator, ignoring the stream for now (we poll to get messages anyway)
-        fetch(`/api/workspace/conversations/${conversationId}/prompt`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: msg, targetAgentId: targetAgent?.id })
-        });
-        
-        // Optimistically add message
-        setMessages(prev => [...prev, {
-          id: Math.random().toString(),
-          channelId: activeChannel.id,
-          senderId: userId,
-          role: 'user',
-          content: msg,
-          createdAt: new Date().toISOString(),
-          requiresApproval: false
-        } as any]);
-        scrollToBottom();
+      // For both DMs and channels, use the channel post route.
+      // The post/route.ts correctly handles DM-<agentId> channels by
+      // extracting the agent ID and triggering its ReAct loop.
+      const res = await fetch(`/api/workspace/channels/${activeChannel.id}/post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: msg })
+      });
+      
+      if (res.ok) {
+        const payload = await res.json();
+        const realMsg = payload.message || payload;
+        setMessages(prev => prev.map(m => m.id === optimisticId ? realMsg : m));
       } else {
-        // Standard channel message - post directly without starting a new loop.
-        // Agents currently in a ReAct loop will see this via live steering.
-        fetch(`/api/workspace/channels/${activeChannel.id}/post`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: msg })
-        });
-        
-        setMessages(prev => [...prev, {
-          id: Math.random().toString(),
-          channelId: activeChannel.id,
-          senderId: userId,
-          role: 'user',
-          content: msg,
-          createdAt: new Date().toISOString(),
-          requiresApproval: false
-        } as any]);
-        scrollToBottom();
+        setMessages(prev => prev.filter(m => m.id !== optimisticId));
+        setInputText(msg);
+        toast.error('Failed to send message');
       }
     } catch (err) {
+      setMessages(prev => prev.filter(m => m.id !== optimisticId));
+      setInputText(msg);
       toast.error('Failed to send message');
     }
   };
@@ -228,7 +231,7 @@ export default function SlackMode({ conversationId }: { conversationId: string }
     <div className="flex h-full w-full bg-zinc-950">
       
       {/* Inner Slack Sidebar */}
-      <div className="w-64 border-r border-zinc-800 bg-[#19171D] flex flex-col">
+      <div className="w-64 border-r border-zinc-800 bg-zinc-900 flex flex-col">
         <div className="p-4 border-b border-zinc-800">
           <h2 className="font-bold text-white truncate text-sm">Agent Workspace</h2>
         </div>
@@ -240,7 +243,7 @@ export default function SlackMode({ conversationId }: { conversationId: string }
               <div 
                 key={c.id} 
                 onClick={() => setActiveChannel(c)}
-                className={`px-4 py-1 flex items-center gap-2 cursor-pointer transition-colors ${activeChannel?.id === c.id ? 'bg-[#1164A3] text-white' : 'text-zinc-400 hover:bg-[#27242C]'}`}
+                className={`px-4 py-1 flex items-center gap-2 cursor-pointer transition-colors ${activeChannel?.id === c.id ? 'bg-blue-600/20 text-blue-400' : 'text-zinc-400 hover:bg-zinc-800'}`}
               >
                 <Hash size={14} /> {c.name}
               </div>
@@ -249,15 +252,21 @@ export default function SlackMode({ conversationId }: { conversationId: string }
 
           <div className="mb-4">
             <div className="px-4 text-xs font-semibold text-zinc-400 mb-1 uppercase tracking-wider">Direct Messages</div>
-            {channels.filter(c => c.isDM).map(c => (
+            {channels.filter(c => c.isDM).map(c => {
+              // Resolve DM-<agentId> to agent template name for display
+              const agentId = c.name.startsWith('DM-') ? c.name.replace('DM-', '') : '';
+              const agent = swarmMembers.find(a => a.id === agentId);
+              const displayName = agent ? agent.template.name : c.name;
+              return (
               <div 
                 key={c.id} 
                 onClick={() => setActiveChannel(c)}
-                className={`px-4 py-1 flex items-center gap-2 cursor-pointer transition-colors ${activeChannel?.id === c.id ? 'bg-[#1164A3] text-white' : 'text-zinc-400 hover:bg-[#27242C]'}`}
+                className={`px-4 py-1 flex items-center gap-2 cursor-pointer transition-colors ${activeChannel?.id === c.id ? 'bg-blue-600/20 text-blue-400' : 'text-zinc-400 hover:bg-zinc-800'}`}
               >
-                <User size={14} /> {c.name}
+                <User size={14} /> {displayName}
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <div>
@@ -266,7 +275,7 @@ export default function SlackMode({ conversationId }: { conversationId: string }
               <div 
                 key={agent.id} 
                 onClick={() => createOrOpenDM(agent)}
-                className="px-4 py-1 flex items-center gap-2 cursor-pointer transition-colors text-zinc-400 hover:bg-[#27242C]"
+                className="px-4 py-1 flex items-center gap-2 cursor-pointer transition-colors text-zinc-400 hover:bg-zinc-800"
                 title={agent.template.role}
               >
                 <div className={`w-2 h-2 rounded-full ${agent.status === 'RUNNING' ? 'bg-green-500' : 'bg-zinc-600'}`}></div>
@@ -283,7 +292,15 @@ export default function SlackMode({ conversationId }: { conversationId: string }
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {activeChannel?.isDM ? <User size={20} className="text-zinc-400" /> : <Hash size={20} className="text-zinc-400" />}
-            <h2 className="font-bold text-white capitalize">{activeChannel?.name || 'Select a channel'}</h2>
+            <h2 className="font-bold text-white capitalize">{(() => {
+              if (!activeChannel) return 'Select a channel';
+              if (activeChannel.isDM && activeChannel.name.startsWith('DM-')) {
+                const agentId = activeChannel.name.replace('DM-', '');
+                const agent = swarmMembers.find(a => a.id === agentId);
+                return agent ? agent.template.name : activeChannel.name;
+              }
+              return activeChannel.name;
+            })()}</h2>
           </div>
         </div>
 
@@ -369,10 +386,12 @@ export default function SlackMode({ conversationId }: { conversationId: string }
         <div className="p-4 pt-2">
           <form onSubmit={sendMessage} className="relative">
             <input
+              id="slack-message-input"
+              name="slack-message-input"
               type="text"
               value={inputText}
               onChange={e => setInputText(e.target.value)}
-              placeholder={activeChannel?.isReadOnly ? "This channel is read-only" : (activeChannel?.isDM ? `Message @${activeChannel?.name}...` : `Post to #${activeChannel?.name} (agents will see this)...`)}
+              placeholder={!activeChannel ? "No channel available" : (activeChannel.isReadOnly ? "This channel is read-only" : (activeChannel.isDM ? `Message @${(() => { const aid = activeChannel.name.replace('DM-',''); const a = swarmMembers.find(x => x.id === aid); return a ? a.template.name : activeChannel.name; })()}...` : `Post to #${activeChannel.name} (agents will see this)...`))}
               disabled={!activeChannel || activeChannel.isReadOnly}
               className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-4 pr-12 py-3 text-white focus:outline-none focus:border-zinc-500 disabled:opacity-50"
             />

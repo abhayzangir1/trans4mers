@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { AgentFactory } from '@/lib/AgentFactory';
 import { agentRegistry } from '@/lib/AgentRegistry';
+import { sseBus } from '@/lib/sseBus';
+import { validateConversationAccess } from '@/lib/withSession';
 
 export async function POST(
   request: Request,
@@ -19,6 +21,16 @@ export async function POST(
     const existingMessage = await prisma.message.findUnique({ where: { id: messageId } });
     if (!existingMessage) return NextResponse.json({ error: 'Message not found' }, { status: 404 });
 
+    const channel = await prisma.channel.findUnique({ where: { id: existingMessage.channelId } });
+    if (!channel) {
+      return NextResponse.json(existingMessage);
+    }
+    
+    const access = await validateConversationAccess(channel.conversationId);
+    if (!access.authorized) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const newContent = customFeedback 
       ? `${existingMessage.content}\n\n[HUMAN FEEDBACK: ${action}] ${customFeedback}`
       : `${existingMessage.content}\n\n[HUMAN FEEDBACK: ${action}]`;
@@ -31,19 +43,14 @@ export async function POST(
       }
     });
 
-    const channel = await prisma.channel.findUnique({ where: { id: updatedMessage.channelId } });
-    if (!channel) {
-      return NextResponse.json(updatedMessage);
-    }
-
     // Broadcast UI updates
-    const payload = JSON.stringify({ id: channel.conversationId });
+    sseBus.emit(channel.conversationId, { type: 'message_update', data: { messageId, action } });
 
     // Rejection or Approval
     const targetAgent = await prisma.agentInstance.findFirst({
       where: { 
         id: existingMessage.senderId,
-        status: 'IDLE' // The child agent is sitting in IDLE waiting to be run
+        status: 'HALTED' // The child agent is sitting in HALTED waiting to be run
       }
     });
 

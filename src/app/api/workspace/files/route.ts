@@ -6,8 +6,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const directoryPath = searchParams.get('path');
 
-    if (!directoryPath) {
-      return NextResponse.json({ error: 'path parameter is required' }, { status: 400 });
+    const { getSessionId } = await import('@/lib/session');
+    const sessionId = await getSessionId();
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!directoryPath || directoryPath.includes('..')) {
+      return NextResponse.json({ error: 'Invalid path parameter' }, { status: 400 });
     }
 
     const files = await FileSystem.listFiles(directoryPath);

@@ -13,6 +13,7 @@ export default function ApprovalWidget({ conversationId }: { conversationId: str
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [feedback, setFeedback] = useState<Record<string, string>>({});
   const [isExpanded, setIsExpanded] = useState(true);
+  const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
 
   const fetchApprovals = () => {
     fetch(`/api/workspace/conversations/${conversationId}/approvals`)
@@ -30,12 +31,12 @@ export default function ApprovalWidget({ conversationId }: { conversationId: str
   useEffect(() => {
     fetchApprovals();
     
-    const eventSource = new EventSource('/api/sse');
+    const eventSource = new EventSource(`/api/sse?conversationId=${conversationId}`);
     eventSource.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
         // If chat updates for this conversation arrive, refetch approvals
-        if (payload.channel === 'chat_updates' && payload.payload === conversationId) {
+        if (payload.type === 'message_update') {
           fetchApprovals();
         }
       } catch (err) { console.error('ApprovalWidget SSE parse error:', err); }
@@ -46,15 +47,21 @@ export default function ApprovalWidget({ conversationId }: { conversationId: str
 
   const handleAction = async (messageId: string, action: 'APPROVED' | 'REJECTED') => {
     try {
-      await fetch(`/api/workspace/messages/${messageId}/approve`, {
+      setIsProcessing(prev => ({ ...prev, [messageId]: true }));
+      const response = await fetch(`/api/workspace/messages/${messageId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, customFeedback: feedback[messageId] || '' })
       });
-      // Optimistic update
-      setRequests(prev => prev.filter(r => r.id !== messageId));
+      if (response.ok) {
+        setRequests(prev => prev.filter(r => r.id !== messageId));
+      } else {
+        console.error('Failed to process approval');
+      }
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsProcessing(prev => ({ ...prev, [messageId]: false }));
     }
   };
 
@@ -96,14 +103,16 @@ export default function ApprovalWidget({ conversationId }: { conversationId: str
             
             <div className="flex justify-end gap-2 mt-1">
               <button 
+                disabled={isProcessing[req.id]}
                 onClick={() => handleAction(req.id, 'REJECTED')}
-                className="flex items-center gap-1 bg-red-950/50 hover:bg-red-900 text-red-400 hover:text-red-300 px-3 py-1.5 rounded text-xs font-medium transition-colors border border-red-900/50"
+                className={`flex items-center gap-1 bg-red-950/50 hover:bg-red-900 text-red-400 hover:text-red-300 px-3 py-1.5 rounded text-xs font-medium transition-colors border border-red-900/50 ${isProcessing[req.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <X size={14} /> Reject
               </button>
               <button 
+                disabled={isProcessing[req.id]}
                 onClick={() => handleAction(req.id, 'APPROVED')}
-                className="flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors"
+                className={`flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors ${isProcessing[req.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <Check size={14} /> Approve & Execute
               </button>
