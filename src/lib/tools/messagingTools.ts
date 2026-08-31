@@ -43,6 +43,15 @@ export const getMessagingTools = (
           return { success: false, message: `Failed: Could not find agent matching "${targetAgentNameOrId}" in this conversation.` };
         }
 
+        if (targetAgent.status === 'IDLE' || targetAgent.status === 'HALTED') {
+          const hasPendingApproval = await prisma.message.findFirst({
+            where: { senderId: targetAgent.id, requiresApproval: true, approvalState: 'PENDING' }
+          });
+          if (hasPendingApproval) {
+            return { success: false, message: `Failed: Cannot trigger agent "${targetAgentNameOrId}"; it is awaiting human approval.` };
+          }
+        }
+
         let targetAgentName = targetAgentNameOrId;
         if (!('template' in targetAgent)) {
            const fullAgent = await prisma.agentInstance.findUnique({

@@ -8,6 +8,13 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
     const { searchParams } = new URL(request.url);
     const since = searchParams.get('since');
 
+    const agent = await prisma.agentInstance.findUnique({ where: { id } });
+    if (!agent) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    const { validateConversationAccess } = await import('@/lib/withSession');
+    const auth = await validateConversationAccess(agent.conversationId);
+    if (!auth.authorized) return auth.response;
+
     const where: Prisma.AgentLogWhereInput = { agentInstanceId: id };
     if (since) {
       where.createdAt = { gt: new Date(since) };

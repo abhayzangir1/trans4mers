@@ -50,7 +50,7 @@ export async function POST(
     const targetAgent = await prisma.agentInstance.findFirst({
       where: { 
         id: existingMessage.senderId,
-        status: 'HALTED' // The child agent is sitting in HALTED waiting to be run
+        status: { in: ['IDLE', 'HALTED'] } // The child agent is waiting to be run
       }
     });
 

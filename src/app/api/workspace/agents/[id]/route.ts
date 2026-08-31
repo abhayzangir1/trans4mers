@@ -26,8 +26,9 @@ export async function DELETE(request: Request, props: { params: Promise<{ id: st
       data: { status: 'FIRED' }
     });
 
-    const payload = JSON.stringify({ status: 'FIRED', agentInstanceId: id });
-
+    const payload = { status: 'FIRED', agentInstanceId: id };
+    const { sseBus } = await import('@/lib/sseBus');
+    sseBus.emit(agent.conversationId, { type: 'agent_update', data: payload });
     return NextResponse.json({ success: true, message: 'Agent fired successfully' });
   } catch (error: unknown) {
     console.error('Error firing agent:', error);

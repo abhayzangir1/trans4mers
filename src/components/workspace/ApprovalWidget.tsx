@@ -70,13 +70,13 @@ export default function ApprovalWidget({ conversationId }: { conversationId: str
   return (
     <div className="z-50 flex flex-col gap-2 w-[500px]">
       
-      {requests.length > 1 && (
+      {requests.length > 0 && (
         <div 
           onClick={() => setIsExpanded(!isExpanded)}
           className="bg-zinc-800 border border-zinc-700 text-zinc-300 px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer mx-auto flex items-center gap-2 shadow-lg hover:bg-zinc-700 transition-colors"
         >
           <AlertCircle size={14} className="text-blue-400" />
-          {requests.length} Pending Approvals
+          {requests.length} Pending Approval{requests.length === 1 ? '' : 's'}
           {isExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
         </div>
       )}

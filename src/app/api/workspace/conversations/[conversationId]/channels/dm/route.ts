@@ -14,6 +14,10 @@ export async function POST(
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    const { validateConversationAccess } = await import('@/lib/withSession');
+    const auth = await validateConversationAccess(conversationId);
+    if (!auth.authorized) return auth.response;
+
     // Find or create the DM channel — use DM-<agentId> convention to match
     // messagingTools.ts, AgentFactory.ts, and post/route.ts
     const channelUniqueName = `DM-${agentId}`;

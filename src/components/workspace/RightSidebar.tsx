@@ -186,8 +186,7 @@ export default function RightSidebar() {
 
 function TasksTab({ conversationId }: { conversationId: string }) {
   const [agents, setAgents] = useState<Array<{id: string; template?: { name?: string; role?: string }; status?: string}>>([]);
-  React.useEffect(() => {
-    if (!conversationId) return;
+  const fetchAgents = () => {
     fetch(`/api/workspace/conversations/${conversationId}/agents`)
       .then(r => r.json())
       .then(data => {
@@ -198,6 +197,23 @@ function TasksTab({ conversationId }: { conversationId: string }) {
         }
       })
       .catch(() => setAgents([]));
+  };
+
+  React.useEffect(() => {
+    if (!conversationId) return;
+    fetchAgents();
+    
+    const eventSource = new EventSource(`/api/sse?conversationId=${conversationId}`);
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'agent_update') {
+          fetchAgents();
+        }
+      } catch (e) {}
+    };
+
+    return () => eventSource.close();
   }, [conversationId]);
 
   return (

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Folder, MessageSquare, PlusCircle, Settings, ChevronDown, ChevronRight } from 'lucide-react';
+import { Folder, MessageSquare, PlusCircle, Settings, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useOSStore } from '@/store/useOSStore';
 import NewProjectModal from './modals/NewProjectModal';
 import NewConversationModal from './modals/NewConversationModal';
@@ -74,6 +74,59 @@ export default function LeftSidebar() {
     setConvModalOpen(true);
   };
 
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
+
+  const handleDeleteProject = async (projectId: string, projectName: string) => {
+    if (deletingProjectId === projectId) return;
+    if (!window.confirm(`Are you sure you want to delete the project "${projectName}" and all its conversations?`)) {
+      return;
+    }
+    setDeletingProjectId(projectId);
+    try {
+      const res = await fetch(`/api/workspace/projects?projectId=${projectId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        if (params.projectId === projectId) {
+          router.push('/workspace');
+        }
+        fetchProjects();
+      } else {
+        console.error('Failed to delete project');
+      }
+    } catch (e) {
+      console.error('Error deleting project:', e);
+    } finally {
+      setDeletingProjectId(null);
+    }
+  };
+
+  const handleDeleteConversation = async (conversationId: string, conversationTitle: string) => {
+    if (deletingConvId === conversationId) return;
+    if (!window.confirm(`Are you sure you want to delete the conversation "${conversationTitle}"?`)) {
+      return;
+    }
+    setDeletingConvId(conversationId);
+    try {
+      const res = await fetch(`/api/workspace/conversations/${conversationId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        if (params.conversationId === conversationId) {
+          router.push('/workspace');
+        }
+        fetchProjects();
+      } else {
+        console.error('Failed to delete conversation');
+      }
+    } catch (e) {
+      console.error('Error deleting conversation:', e);
+    } finally {
+      setDeletingConvId(null);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full border-r border-zinc-800 text-sm" style={{ backgroundColor: 'var(--left-pane, #09090b)' }}>
       <div className="p-4 border-b border-zinc-800">
@@ -106,13 +159,22 @@ export default function LeftSidebar() {
                   <Folder size={14} className="text-blue-400" />
                   <span className="font-medium truncate max-w-[150px]" title={project.name}>{project.name}</span>
                 </div>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleOpenConvModal(project.id); }}
-                  className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity"
-                  title="New Conversation"
-                >
-                  <PlusCircle size={14} />
-                </button>
+                <div className="opacity-0 group-hover:opacity-100 flex items-center gap-2 transition-opacity">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleOpenConvModal(project.id); }}
+                    className="hover:text-white"
+                    title="New Conversation"
+                  >
+                    <PlusCircle size={14} />
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id, project.name); }}
+                    className="hover:text-red-400 text-zinc-500"
+                    title="Delete Project"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
 
               {expandedProjects[project.id] && (
@@ -121,10 +183,19 @@ export default function LeftSidebar() {
                     <div 
                       key={conv.id}
                       onClick={() => router.push(`/workspace/${project.id}/${conv.id}`)}
-                      className={`flex items-center gap-2 p-1.5 rounded cursor-pointer ${params.conversationId === conv.id ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'}`}
+                      className={`flex items-center justify-between p-1.5 rounded cursor-pointer group ${params.conversationId === conv.id ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'}`}
                     >
-                      <MessageSquare size={12} />
-                      <span className="truncate">{conv.title || 'Untitled'}</span>
+                      <div className="flex items-center gap-2 truncate">
+                        <MessageSquare size={12} className="shrink-0" />
+                        <span className="truncate">{conv.title || 'Untitled'}</span>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteConversation(conv.id, conv.title || 'Untitled'); }}
+                        className="opacity-0 group-hover:opacity-100 hover:text-red-400 text-zinc-500 transition-opacity shrink-0"
+                        title="Delete Conversation"
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     </div>
                   ))}
                 </div>

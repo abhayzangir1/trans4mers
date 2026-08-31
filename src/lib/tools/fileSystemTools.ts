@@ -24,7 +24,8 @@ export const getFileSystemTools = (sessionId: string, projectId: string) => {
         const baseDir = (!projectId || projectId === 'null' || projectId === 'undefined') 
           ? path.resolve(AGENT_WORKSPACE_DIR, sessionId, 'global_no_project') 
           : path.resolve(AGENT_WORKSPACE_DIR, sessionId, projectId);
-        const resolvedPath = path.resolve(baseDir, input.filePath);
+        const cleanPath = input.filePath.replace(/^[\/\\]+/, '');
+        const resolvedPath = path.resolve(baseDir, cleanPath);
         if (!resolvedPath.startsWith(baseDir + path.sep) && resolvedPath !== baseDir) {
           throw new Error("Invalid file path");
         }
@@ -54,7 +55,8 @@ export const getFileSystemTools = (sessionId: string, projectId: string) => {
         const baseDir = (!projectId || projectId === 'null' || projectId === 'undefined') 
           ? path.resolve(AGENT_WORKSPACE_DIR, sessionId, 'global_no_project') 
           : path.resolve(AGENT_WORKSPACE_DIR, sessionId, projectId);
-        const resolvedPath = path.resolve(baseDir, input.filePath);
+        const cleanPath = input.filePath.replace(/^[\/\\]+/, '');
+        const resolvedPath = path.resolve(baseDir, cleanPath);
         if (!resolvedPath.startsWith(baseDir + path.sep) && resolvedPath !== baseDir) {
           throw new Error("Invalid file path");
         }
@@ -82,10 +84,11 @@ export const getFileSystemTools = (sessionId: string, projectId: string) => {
     async (input) => {
       try {
         const dirPath = input.directoryPath || '';
+        const cleanPath = dirPath.replace(/^[\/\\]+/, '');
         const baseDir = (!projectId || projectId === 'null' || projectId === 'undefined') 
           ? path.resolve(AGENT_WORKSPACE_DIR, sessionId, 'global_no_project') 
           : path.resolve(AGENT_WORKSPACE_DIR, sessionId, projectId);
-        const resolvedPath = path.resolve(baseDir, dirPath);
+        const resolvedPath = path.resolve(baseDir, cleanPath);
         if (!resolvedPath.startsWith(baseDir + path.sep) && resolvedPath !== baseDir) {
           throw new Error("Invalid file path");
         }

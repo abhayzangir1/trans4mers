@@ -41,10 +41,13 @@ export async function POST(request: Request, props: { params: Promise<{ conversa
       data: { id: conversationId, status: 'RUNNING', resumedCount: haltedAgents.length }
     });
 
-    // Fire ReAct loops concurrently in the background
-    Promise.allSettled(haltedAgents.map(agent => 
-      AgentFactory.runReActLoop(agent.id)
-    )).catch(console.error);
+    const { after } = await import('next/server');
+    after(() => {
+      // Fire ReAct loops concurrently in the background
+      Promise.allSettled(haltedAgents.map(agent => 
+        AgentFactory.runReActLoop(agent.id)
+      )).catch(console.error);
+    });
 
     return NextResponse.json({ success: true, resumedCount: haltedAgents.length });
 

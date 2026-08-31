@@ -12,6 +12,10 @@ function getSecurePath(sessionId: string, projectId: string, userPath: string) {
   if (resolved.startsWith('..') || resolved.startsWith('/') || /^[a-zA-Z]:/.test(resolved)) {
     throw new Error('Path traversal detected');
   }
+
+  if (projectId && (projectId.includes('..') || projectId.includes('/') || projectId.includes('\\'))) {
+    throw new Error('Invalid projectId');
+  }
   
   if (!projectId || projectId === 'null' || projectId === 'undefined') {
     return `.trans4mers-workspaces/${sessionId}/global_no_project/${resolved}`;

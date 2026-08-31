@@ -208,7 +208,7 @@ function MCPSettings() {
   const [command, setCommand] = useState('');
 
   useEffect(() => {
-    fetch('/api/settings/mcp').then(r => r.json()).then(data => { setServers(data?.mcpServers || {}); setLoading(false); }).catch(console.error);
+    fetch('/api/settings/mcp').then(r => r.json()).then(data => { setServers(data?.mcpServers || {}); }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
   const handleCreate = async () => {

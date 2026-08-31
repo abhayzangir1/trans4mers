@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { validateConversationAccess } from '@/lib/withSession';
+import { getSessionId } from '@/lib/session';
 
 const execAsync = promisify(exec);
 
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
       if (!command) return NextResponse.json({ success: true });
 
       // Security check: Block shell injection characters
-      if (/[&|;$><`]/.test(command)) {
+      if (/[&|;$><`\n\r]/.test(command)) {
         return NextResponse.json({ error: 'Shell metacharacters are not allowed.' }, { status: 403 });
       }
 
@@ -36,10 +37,28 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Command '${baseCommand}' is not in the allowlist.` }, { status: 403 });
       }
 
-      // Execute strictly safe commands statelessly
+      // Determine the isolated workspace directory for this project
+      const sessionId = await getSessionId();
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: id },
+        select: { projectId: true }
+      });
+      const projectId = conversation?.projectId || 'global_no_project';
+      
+      const AGENT_WORKSPACE_DIR = process.env.AGENT_WORKSPACE_DIR || '.trans4mers-workspaces';
+      const path = await import('path');
+      const fs = await import('fs');
+      
+      const cwd = path.resolve(process.cwd(), AGENT_WORKSPACE_DIR, sessionId, projectId);
+      
+      if (!fs.existsSync(cwd)) {
+        fs.mkdirSync(cwd, { recursive: true });
+      }
+
+      // Execute strictly safe commands statelessly within the isolated directory
       try {
         const { stdout, stderr } = await execAsync(command, { 
-          cwd: process.cwd(),
+          cwd,
           timeout: 5000 // 5s timeout
         });
         

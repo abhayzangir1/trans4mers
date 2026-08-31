@@ -6,9 +6,11 @@ export const getSwarmTools = (agentInstanceId: string, conversationId: string) =
   const proposeSubAgentTool = ai.defineTool(
     {
       name: 'proposeSubAgent',
-      description: 'Propose a specialized sub-agent to assist with a task. This creates a child agent instance that requires human approval before spawning.',
+      description: 'Propose a specialized sub-agent to assist with a task. You can dynamically define the agent\'s name, role, and system prompt. This creates a child agent instance that requires human approval before spawning.',
       inputSchema: z.object({
-        templateId: z.string().describe('The ID of the AgentTemplate blueprint to spawn.'),
+        name: z.string().describe('Name of the specialized sub-agent (e.g. Marketing Expert)'),
+        role: z.string().describe('Role of the specialized sub-agent (e.g. Marketer)'),
+        systemPrompt: z.string().describe('Detailed system prompt describing the sub-agent expertise and rules.'),
         instructions: z.string().describe('What the sub-agent needs to accomplish'),
       }),
       outputSchema: z.object({
@@ -18,12 +20,19 @@ export const getSwarmTools = (agentInstanceId: string, conversationId: string) =
       }),
     },
     async (input) => {
-      const { templateId, instructions } = input;
+      const { name, role, systemPrompt, instructions } = input;
       try {
+        let template = await prisma.agentTemplate.findFirst({ where: { name } });
+        if (!template) {
+          template = await prisma.agentTemplate.create({
+            data: { name, role, systemPrompt }
+          });
+        }
+        
         const subInstance = await prisma.agentInstance.create({
           data: {
             conversationId,
-            templateId,
+            templateId: template.id,
             parentInstanceId: agentInstanceId,
             status: 'IDLE', // Waits for human execution
           }
@@ -43,7 +52,7 @@ export const getSwarmTools = (agentInstanceId: string, conversationId: string) =
             channelId: channel.id,
             senderId: subInstance.id, // Fixed: use child ID so approval route can find it
             role: 'SYSTEM',
-            content: `Requested approval to spawn sub-agent (Template: ${templateId}) with instructions: ${instructions}`,
+            content: `Requested approval to spawn sub-agent (Template: ${template.name}) with instructions: ${instructions}`,
             requiresApproval: true,
             approvalState: 'PENDING'
           }

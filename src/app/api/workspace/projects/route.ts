@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { randomUUID } from 'crypto';
 import { getSessionId } from '@/lib/session';
+import { FileSystem } from '@/lib/FileSystem';
+import path from 'path';
 
 export async function GET() {
   try {
@@ -71,5 +73,42 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     console.error('Error creating project:', error);
     return NextResponse.json({ error: 'Failed to create project' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const sessionId = await getSessionId();
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const { searchParams } = new URL(request.url);
+    const projectId = searchParams.get('projectId');
+    if (!projectId) {
+      return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+    }
+
+    // Verify the project belongs to the session
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, sessionId }
+    });
+    if (!project) {
+      return NextResponse.json({ success: true, message: 'Already deleted' });
+    }
+
+    // Delete the actual workspace folder on disk to free space
+    if (project.directoryPath) {
+      await FileSystem.deleteDirectory(project.directoryPath);
+    }
+
+    // Delete the project from DB
+    await prisma.project.delete({
+      where: { id: projectId }
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    console.error('Error deleting project:', error);
+    return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 });
   }
 }

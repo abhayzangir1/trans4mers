@@ -48,3 +48,11 @@ build_error.txt
 
 # trans4mers workspaces
 .trans4mers-workspaces/
+
+# Agent Brain & State
+.gemini/
+.agents/
+
+
+rules.txt
+test-pro.js

@@ -185,7 +185,7 @@ model FileLocks {
   @@index([agentId])
   @@index([createdAt])
   @@index([expiresAt])
-  @@unique([filePath])
+  @@unique([agentId, filePath])
 }
 
 model Artifacts {

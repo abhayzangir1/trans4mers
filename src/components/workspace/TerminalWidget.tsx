@@ -14,6 +14,27 @@ export default function TerminalWidget({ terminalId = 'default-term' }: { termin
     }
   }, [history]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetch(`/api/pty?id=${terminalId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.output) {
+            setHistory(prev => {
+              // Only add if it's new (simple heuristic: doesn't match last output)
+              const lastOutput = prev.length > 0 ? prev[prev.length - 1].text : '';
+              if (lastOutput !== data.output && data.output !== '') {
+                 return [...prev, { type: 'output', text: data.output }];
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [terminalId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isExecuting) return;
