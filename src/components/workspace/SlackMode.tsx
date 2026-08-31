@@ -310,6 +310,8 @@ export default function SlackMode({ conversationId }: { conversationId: string }
               }
               return activeChannel.name;
             })()}</h2>
+          </div>
+        </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {messages.map(msg => {
             const renderAvatar = (msg: any) => {
@@ -332,6 +334,7 @@ export default function SlackMode({ conversationId }: { conversationId: string }
                 return agent ? `${agent.template.name}` : `Agent (${msg.senderId.substring(0,4)})`;
               }
               return msg.senderId;
+            };
             const senderName = getSenderName();
 
             return (
