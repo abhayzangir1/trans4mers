@@ -29,7 +29,8 @@ export async function POST(request: Request) {
   try {
     const sessionId = await getSessionId();
     const body = await request.json();
-    const { name, description, directoryPath = `/app/projects/${randomUUID()}` } = body;
+    const projectId = randomUUID();
+    const { name, description, directoryPath = `.trans4mers-workspaces/${sessionId}/${projectId}` } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
     const result = await prisma.$transaction(async (tx) => {
       const project = await tx.project.create({
         data: {
+          id: projectId,
           name,
           description,
           directoryPath,

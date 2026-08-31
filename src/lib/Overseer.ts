@@ -78,7 +78,7 @@ export class Overseer {
               data: {
                 channelId: blackboard.id,
                 senderId: 'overseer',
-                role: 'system',
+                role: 'SYSTEM',
                 content: JSON.stringify(contentObj, null, 2),
                 requiresApproval: true,
                 approvalState: 'PENDING'

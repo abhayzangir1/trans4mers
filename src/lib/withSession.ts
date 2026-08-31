@@ -20,7 +20,7 @@ export async function validateConversationAccess(conversationId: string): Promis
     return { authorized: false, response: NextResponse.json({ error: 'Not found' }, { status: 404 }) };
   }
 
-  if (conversation.project.sessionId && conversation.project.sessionId !== sessionId) {
+  if (!conversation.project.sessionId || conversation.project.sessionId !== sessionId) {
     return { authorized: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
 
@@ -44,7 +44,7 @@ export async function validateChannelAccess(channelId: string): Promise<
     return { authorized: false, response: NextResponse.json({ error: 'Not found' }, { status: 404 }) };
   }
 
-  if (channel.conversation.project.sessionId && channel.conversation.project.sessionId !== sessionId) {
+  if (!channel.conversation.project.sessionId || channel.conversation.project.sessionId !== sessionId) {
     return { authorized: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
 
@@ -68,7 +68,7 @@ export async function validateProjectAccess(projectId: string): Promise<
     return { authorized: false, response: NextResponse.json({ error: 'Not found' }, { status: 404 }) };
   }
 
-  if (project.sessionId && project.sessionId !== sessionId) {
+  if (!project.sessionId || project.sessionId !== sessionId) {
     return { authorized: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
 

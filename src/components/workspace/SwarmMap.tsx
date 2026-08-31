@@ -294,7 +294,7 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
   };
 
   if (loading) {
-    return <div className="h-full w-full flex items-center justify-center bg-zinc-950 text-zinc-400">Loading Swarm Map...</div>;
+    return <div className="h-full w-full flex items-center justify-center bg-zinc-950 text-zinc-400">Loading G4rage...</div>;
   }
 
   return (
@@ -312,7 +312,7 @@ export default function SwarmMap({ conversationId }: { conversationId: string })
           fitView 
           className="bg-zinc-950"
         >
-          <Background color="#3f3f46" gap={16} />
+          <Background color="var(--node-border, #3f3f46)" gap={16} />
         </ReactFlow>
       </div>
 

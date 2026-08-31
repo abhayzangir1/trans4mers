@@ -115,12 +115,20 @@ export default function SlackMode({ conversationId }: { conversationId: string }
 
     loadMessages();
 
+    let debounceTimer: NodeJS.Timeout;
+    const debouncedLoadMessages = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadMessages();
+      }, 500);
+    };
+
     const eventSource = new EventSource(`/api/sse?conversationId=${conversationId}`);
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'message_update') {
-          loadMessages();
+          debouncedLoadMessages();
         }
         if (data.type === 'agent_update') {
           fetchSwarmMembers();
@@ -132,6 +140,7 @@ export default function SlackMode({ conversationId }: { conversationId: string }
 
     return () => {
       controller.abort();
+      clearTimeout(debounceTimer);
       eventSource.close();
     };
   }, [activeChannel, conversationId]);
@@ -175,7 +184,7 @@ export default function SlackMode({ conversationId }: { conversationId: string }
       id: optimisticId,
       channelId: activeChannel.id,
       senderId: userId,
-      role: 'user',
+      role: 'USER',
       content: msg,
       createdAt: new Date().toISOString(),
       requiresApproval: false
@@ -317,9 +326,8 @@ export default function SlackMode({ conversationId }: { conversationId: string }
             };
             const senderName = getSenderName();
             const getAvatar = () => {
-              if (msg.senderId === 'human' || msg.senderId === 'user' || msg.senderId === userId) return '👤';
-              if (msg.senderId === 'system' || msg.senderId === 'overseer') return '⚙️';
-              return '🤖';
+              const name = getSenderName();
+              return <span className="text-sm font-bold">{name.substring(0, 2).toUpperCase()}</span>;
             };
 
             return (

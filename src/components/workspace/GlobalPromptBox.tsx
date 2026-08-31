@@ -44,23 +44,42 @@ export default function GlobalPromptBox({ conversationId }: { conversationId: st
     const val = e.target.value;
     setPrompt(val);
 
-    // Naive @ mention detection for MVP
-    const lastWord = val.split(' ').pop();
-    if (lastWord && lastWord.startsWith('@')) {
+    const cursorPosition = e.target.selectionStart;
+    const textBeforeCursor = val.slice(0, cursorPosition);
+    const match = textBeforeCursor.match(/@([\w-]*)$/);
+
+    if (match) {
       setShowMentions(true);
-      setMentionFilter(lastWord.substring(1).toLowerCase());
+      setMentionFilter(match[1].toLowerCase());
     } else {
       setShowMentions(false);
     }
   };
 
   const insertMention = (name: string) => {
-    const words = prompt.split(' ');
-    words.pop(); // remove the partial @mention
-    const newText = [...words, `@${name} `].join(' ');
-    setPrompt(newText);
-    setShowMentions(false);
-    inputRef.current?.focus();
+    if (!inputRef.current) return;
+    const cursorPosition = inputRef.current.selectionStart;
+    const textBeforeCursor = prompt.slice(0, cursorPosition);
+    const textAfterCursor = prompt.slice(cursorPosition);
+    const match = textBeforeCursor.match(/@([\w-]*)$/);
+    
+    if (match) {
+      const newTextBeforeCursor = textBeforeCursor.slice(0, match.index) + `@${name} `;
+      setPrompt(newTextBeforeCursor + textAfterCursor);
+      setShowMentions(false);
+      
+      setTimeout(() => {
+        if (inputRef.current) {
+          const newCursorPos = newTextBeforeCursor.length;
+          inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
+          inputRef.current.focus();
+        }
+      }, 0);
+    } else {
+      setPrompt(prompt + `@${name} `);
+      setShowMentions(false);
+      inputRef.current.focus();
+    }
   };
 
   const handleSend = async () => {

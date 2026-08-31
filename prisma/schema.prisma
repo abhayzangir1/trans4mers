@@ -30,10 +30,10 @@ enum ConversationStatus {
 }
 
 enum MessageRole {
-  user
-  agent
-  system
-  tool
+  USER
+  AGENT
+  SYSTEM
+  TOOL
 }
 
 enum ArtifactStatus {
@@ -132,11 +132,24 @@ model Channel {
   @@index([createdAt])
 }
 
+model User {
+  id        String   @id @default(uuid())
+  sessionId String?  @unique
+  name      String   @default("Human")
+  messages  Message[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Message {
   id               String   @id @default(uuid())
   channelId        String
   channel          Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   senderId         String 
+  agentId          String?
+  userId           String?
+  agent            AgentInstance? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  user             User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   role             MessageRole 
   content          String
   requiresApproval Boolean  @default(false)
@@ -170,6 +183,8 @@ model FileLocks {
   createdAt     DateTime      @default(now())
 
   @@index([agentId])
+  @@index([createdAt])
+  @@index([expiresAt])
   @@unique([filePath])
 }
 
@@ -205,8 +220,11 @@ model Upload {
 
 model SystemLock {
   id        String   @id
+  ownerId   String?
   lockedAt  DateTime
   expiresAt DateTime
+
+  @@index([expiresAt])
 }
 
 model CommandExecution {
@@ -226,7 +244,10 @@ model Settings {
   id        String   @id @default(uuid())
   key       String   @unique
   value     Json
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
 }
 
 model AgentInstance {
@@ -245,6 +266,7 @@ model AgentInstance {
   childInstances AgentInstance[] @relation("ParentChild")
   logs           AgentLog[]
   fileLocks      FileLocks[]
+  messages       Message[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -266,4 +288,5 @@ model SharedBlackboard {
 
   @@unique([conversationId, key])
   @@index([conversationId])
+  @@index([createdAt])
 }

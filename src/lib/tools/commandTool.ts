@@ -16,6 +16,9 @@ export const getCommandTool = (sessionId: string, projectId: string) => {
     }),
   }, async (input) => {
     try {
+      if (input.command.includes('cd /') || input.command.includes('../')) {
+        return { success: false, error: 'Command restricted: "cd /" or "../" not allowed for security reasons.', stderr: '' };
+      }
       const baseDir = path.resolve(AGENT_WORKSPACE_DIR);
       const cwd = (!projectId || projectId === 'null' || projectId === 'undefined')
         ? path.resolve(baseDir, sessionId, 'global_no_project')

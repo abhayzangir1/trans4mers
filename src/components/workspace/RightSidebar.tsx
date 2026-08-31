@@ -25,14 +25,15 @@ export default function RightSidebar() {
     setRightPaneState('files');
   }, [conversationId, setActiveFile, setRightPaneState]);
 
-  const handleSave = async (contentToSave?: string) => {
-    if (!activeFilePath) return;
+  const handleSave = async (contentToSave?: string, pathToSave?: string) => {
+    const targetPath = pathToSave || activeFilePath;
+    if (!targetPath) return;
     const content = contentToSave !== undefined ? contentToSave : codeContent;
     try {
       const res = await fetch('/api/workspace', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: activeFilePath, content, projectId })
+        body: JSON.stringify({ path: targetPath, content, projectId })
       });
       if (res.ok) {
         setShowToast(true);
@@ -45,8 +46,8 @@ export default function RightSidebar() {
     }
   };
 
-  const debouncedSave = useDebouncedCallback((content: string) => {
-    handleSave(content);
+  const debouncedSave = useDebouncedCallback((content: string, path: string) => {
+    handleSave(content, path);
   }, 1000);
 
   // Fetch the file tree
@@ -105,7 +106,7 @@ export default function RightSidebar() {
     switch (rightPaneState) {
       case 'editor':
         return (
-          <div className="flex-1 flex flex-col h-full bg-[#1e1e1e]">
+          <div className="flex-1 flex flex-col h-full bg-[var(--background)]">
             <div className="flex items-center justify-between px-3 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-300">
               <span className="font-mono truncate">{activeFilePath}</span>
               <div className="flex items-center gap-2">
@@ -127,7 +128,9 @@ export default function RightSidebar() {
                 value={codeContent}
                 onChange={(val) => {
                   setCodeContent(val || '');
-                  debouncedSave(val || '');
+                  if (activeFilePath) {
+                    debouncedSave(val || '', activeFilePath);
+                  }
                 }}
                 options={{ minimap: { enabled: false }, fontSize: 12, wordWrap: 'on' }}
               />

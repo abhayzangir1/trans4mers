@@ -34,7 +34,7 @@ export async function POST(
       data: {
         channelId: channelId,
         senderId: 'human',
-        role: 'user',
+        role: 'USER',
         content,
       }
     });

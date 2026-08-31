@@ -260,6 +260,9 @@ ${instance.template.systemPrompt}
       if (instance.contextState && typeof instance.contextState === 'object' && !Array.isArray(instance.contextState)) {
         const state = instance.contextState as { history: MessageData[], lastFetch: string };
         history = state.history;
+        if (history.length > 0 && history[0].role === 'system') {
+          history[0].content = [{ text: systemPreamble }];
+        }
         lastMessageFetchTime = new Date(state.lastFetch);
       } else {
         history = [
@@ -267,32 +270,33 @@ ${instance.template.systemPrompt}
         ];
 
         for (const msg of rawMessages) {
-        let role = msg.role as 'user' | 'model' | 'system' | 'tool' | 'agent';
-        let contentStr = msg.content;
-        
-        const channel = dmChannelsInit.find(c => c.id === msg.channelId);
-        const prefix = channel ? `[DM from ${msg.senderId === 'human' ? 'User' : 'Agent ' + msg.senderId}]: ` : (role === 'agent' ? `[Peer Agent ${msg.senderId}]: ` : '');
+          let role = msg.role as 'user' | 'model' | 'system' | 'tool' | 'agent';
+          const channel = dmChannelsInit.find(c => c.id === msg.channelId);
+          const prefix = channel ? `[DM from ${msg.senderId === 'human' ? 'User' : 'Agent ' + msg.senderId}]: ` : (role === 'agent' ? `[Peer Agent ${msg.senderId}]: ` : '');
 
-        if (role === 'agent') {
-          if (msg.senderId === agentInstanceId) {
-            role = 'model';
-          } else {
-            role = 'user';
-            contentStr = prefix + contentStr;
+          if (role === 'agent') {
+            if (msg.senderId === agentInstanceId) {
+              role = 'model';
+            } else {
+              role = 'user';
+            }
           }
-        } else if (role === 'user') {
-          contentStr = prefix + contentStr;
-        }
-        try {
-          const parsedContent = JSON.parse(contentStr);
-          if (Array.isArray(parsedContent)) {
-             history.push({ role, content: parsedContent });
-          } else {
-             history.push({ role, content: [{ text: contentStr }] });
+          
+          let parsedContent: any;
+          try {
+            parsedContent = JSON.parse(msg.content);
+          } catch {
+            parsedContent = [{ text: msg.content }];
           }
-        } catch {
-          history.push({ role, content: [{ text: contentStr }] });
-        }
+          if (!Array.isArray(parsedContent)) {
+            parsedContent = [{ text: msg.content }];
+          }
+
+          if (prefix && role === 'user' && parsedContent.length > 0 && typeof parsedContent[0].text === 'string') {
+             parsedContent[0].text = prefix + parsedContent[0].text;
+          }
+
+          history.push({ role, content: parsedContent });
         }
       }
 
@@ -326,7 +330,7 @@ ${instance.template.systemPrompt}
 
         // Live Steering: Check for new user & peer messages
         const dmChannels = await prisma.channel.findMany({
-          where: { conversationId: instance.conversationId, isDM: true, name: instance.template.name }
+          where: { conversationId: instance.conversationId, isDM: true, name: `DM-${instance.id}` }
         });
         const channelIds = [blackboard.id, ...dmChannels.map(c => c.id)];
 
@@ -346,7 +350,6 @@ ${instance.template.systemPrompt}
               continue; // Ignore our own just-saved messages
             }
             let role = msg.role as 'user' | 'model' | 'system' | 'tool' | 'agent';
-            let contentStr = msg.content;
             
             const channel = dmChannels.find(c => c.id === msg.channelId);
             const prefix = channel ? `[DM from ${msg.senderId === 'human' ? 'User' : 'Agent ' + msg.senderId}]: ` : (role === 'agent' ? `[Peer Agent ${msg.senderId}]: ` : '');
@@ -354,9 +357,22 @@ ${instance.template.systemPrompt}
             if (role === 'agent') {
                role = 'user';
             }
-            contentStr = prefix + contentStr;
+
+            let parsedContent: any;
+            try {
+              parsedContent = JSON.parse(msg.content);
+            } catch {
+              parsedContent = [{ text: msg.content }];
+            }
+            if (!Array.isArray(parsedContent)) {
+              parsedContent = [{ text: msg.content }];
+            }
+
+            if (prefix && role === 'user' && parsedContent.length > 0 && typeof parsedContent[0].text === 'string') {
+               parsedContent[0].text = prefix + parsedContent[0].text;
+            }
             
-            history.push({ role, content: [{ text: contentStr }] });
+            history.push({ role, content: parsedContent });
             lastMessageFetchTime = msg.createdAt;
           }
           await logAgentThought(`[SYSTEM] Received new human/peer instruction(s). Injecting into context...`);
@@ -420,7 +436,7 @@ ${instance.template.systemPrompt}
                data: {
                  channelId: activeChannelId,
                  senderId: agentInstanceId,
-                 role: 'agent',
+                 role: 'AGENT',
                  content: response.text.trim()
                }
              });
@@ -444,7 +460,7 @@ ${instance.template.systemPrompt}
                 data: {
                   channelId: activeChannelId,
                   senderId: agentInstanceId,
-                  role: 'agent',
+                  role: 'AGENT',
                   content: (tr.input as any).reason || 'I need your approval to proceed.',
                   requiresApproval: true,
                   approvalState: 'PENDING'
@@ -546,7 +562,7 @@ ${instance.template.systemPrompt}
             data: {
               channelId: activeChannelId,
               senderId: agentInstanceId,
-              role: 'agent',
+              role: 'AGENT',
               content: JSON.stringify([{ text: finalResponse }])
             }
           });
@@ -574,11 +590,14 @@ ${instance.template.systemPrompt}
       console.error('Agent Loop Error:', err);
       
       if (err.name === 'AbortError' || err.message === 'AbortError') {
-        await prisma.agentInstance.update({
-          where: { id: agentInstanceId },
-          data: { status: 'HALTED' },
-        });
-        if (emitAgentUpdate) await emitAgentUpdate('HALTED');
+        const currentInstance = await prisma.agentInstance.findUnique({ where: { id: agentInstanceId } });
+        if (currentInstance && currentInstance.status !== 'FIRED') {
+          await prisma.agentInstance.update({
+            where: { id: agentInstanceId },
+            data: { status: 'HALTED' },
+          });
+          if (emitAgentUpdate) await emitAgentUpdate('HALTED');
+        }
         return { failed: true, reason: 'Aborted' };
       }
       
@@ -598,7 +617,7 @@ ${instance.template.systemPrompt}
               data: {
                 channelId: blackboard.id,
                 senderId: agentInstanceId,
-                role: 'agent',
+                role: 'AGENT',
                 content: `[SYSTEM] Agent crashed due to fatal error: ${err.message}`
               }
             });

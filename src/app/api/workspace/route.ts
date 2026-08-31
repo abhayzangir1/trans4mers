@@ -9,7 +9,7 @@ function getSecurePath(sessionId: string, projectId: string, userPath: string) {
   const cleanUserPath = userPath.replace(/\\/g, '/');
   const resolved = path.posix.normalize(cleanUserPath);
   
-  if (resolved.startsWith('..') || resolved.startsWith('/')) {
+  if (resolved.startsWith('..') || resolved.startsWith('/') || /^[a-zA-Z]:/.test(resolved)) {
     throw new Error('Path traversal detected');
   }
   

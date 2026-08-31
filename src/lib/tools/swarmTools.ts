@@ -42,7 +42,7 @@ export const getSwarmTools = (agentInstanceId: string, conversationId: string) =
           data: {
             channelId: channel.id,
             senderId: subInstance.id, // Fixed: use child ID so approval route can find it
-            role: 'system',
+            role: 'SYSTEM',
             content: `Requested approval to spawn sub-agent (Template: ${templateId}) with instructions: ${instructions}`,
             requiresApproval: true,
             approvalState: 'PENDING'
@@ -102,7 +102,7 @@ export const getSwarmTools = (agentInstanceId: string, conversationId: string) =
           data: {
             channelId: channel.id,
             senderId: agentInstanceId,
-            role: 'agent',
+            role: 'AGENT',
             content: `**[BLACKBOARD MEMO: ${key}]**\n${value}`
           }
         });

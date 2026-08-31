@@ -113,7 +113,7 @@ export async function POST(
       data: {
         channelId: channel.id,
         senderId: 'human',
-        role: 'user',
+        role: 'USER',
         content: prompt
       }
     });
