@@ -310,31 +310,33 @@ export default function SlackMode({ conversationId }: { conversationId: string }
               }
               return activeChannel.name;
             })()}</h2>
-          </div>
-        </div>
-
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {messages.map(msg => {
+            const renderAvatar = (msg: any) => {
+              const isHuman = msg.senderId === 'human' || msg.senderId === 'user' || msg.senderId === userId;
+              const seed = isHuman ? (userId || 'human') : msg.senderId;
+              const avatarUrl = `https://api.dicebear.com/7.x/shapes/svg?seed=${seed}&backgroundColor=0a5b83,1c799f,69d2e7,f1f4dc,f88c49&radius=50`;
+              
+              return (
+                <div className="w-10 h-10 rounded-full shrink-0 overflow-hidden bg-zinc-800 border border-zinc-700 flex items-center justify-center">
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                </div>
+              );
+            };
+
             const getSenderName = () => {
               if (msg.senderId === 'human' || msg.senderId === 'user' || msg.senderId === userId) return 'You';
               if (msg.senderId === 'system' || msg.senderId === 'overseer') return 'System Overseer';
-              if (msg.role === 'agent') {
+              if (msg.role === 'AGENT' || msg.role === 'agent') {
                 const agent = swarmMembers.find(a => a.id === msg.senderId);
                 return agent ? `${agent.template.name}` : `Agent (${msg.senderId.substring(0,4)})`;
               }
               return msg.senderId;
-            };
             const senderName = getSenderName();
-            const getAvatar = () => {
-              const name = getSenderName();
-              return <span className="text-sm font-bold">{name.substring(0, 2).toUpperCase()}</span>;
-            };
 
             return (
             <div key={msg.id} className="flex gap-4">
-              <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center shrink-0 border border-zinc-700 text-lg">
-                {getAvatar()}
-              </div>
+              {renderAvatar(msg)}
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2 mb-1">
                   <span className="font-bold text-white capitalize">{senderName}</span>
